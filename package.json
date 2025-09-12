@@ -1,0 +1,65 @@
+{
+  "name": "chillmusic-app",
+  "version": "1.0.0",
+  "description": "ChillMusic - Music rating and discovery application",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish=never",
+    "pack": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "music",
+    "rating",
+    "electron",
+    "desktop",
+    "app"
+  ],
+  "author": "ChillMusic Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "mysql2": "^3.6.5",
+    "nodemailer": "^6.9.7",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "fast-average-color": "^9.2.0"
+  },
+  "build": {
+    "appId": "com.chillmusic.app",
+    "productName": "ChillMusic",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "images/favicon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "images/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "images/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
