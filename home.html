@@ -307,8 +307,14 @@
                 </div>
                 
                 <div class="settings-content">
+                    <div class="settings-tabs">
+                        <button class="settings-tab active" data-tab="appearance">Внешний вид</button>
+                        <button class="settings-tab" data-tab="profile">Личная информация</button>
+                        <button class="settings-tab" data-tab="social">Социальные сети</button>
+                        <button class="settings-tab" data-tab="security">Безопасность</button>
+                    </div>
                     <!-- Секция аватара и баннера -->
-                    <div class="settings-section">
+                    <div class="settings-section" data-tab-content="appearance">
                         <h2 class="settings-section-title">Внешний вид</h2>
                         
                         <div class="settings-item">
@@ -358,7 +364,7 @@
                     </div>
                     
                     <!-- Секция личной информации -->
-                    <div class="settings-section">
+                    <div class="settings-section" data-tab-content="profile">
                         <h2 class="settings-section-title">Личная информация</h2>
                         
                         <div class="settings-item">
@@ -393,7 +399,7 @@
                     </div>
                     
                     <!-- Секция социальных сетей -->
-                    <div class="settings-section">
+                    <div class="settings-section" data-tab-content="social">
                         <h2 class="settings-section-title">Социальные сети</h2>
                         
                         <div class="settings-item">
@@ -422,6 +428,102 @@
                                         <input type="text" id="settingsTelegramInput" class="settings-input" placeholder="@username">
                                         <button class="settings-btn primary" id="settingsTelegramSave">Сохранить</button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Секция безопасности -->
+                    <div class="settings-section" data-tab-content="security">
+                        <h2 class="settings-section-title">Безопасность</h2>
+
+                        <!-- Смена email -->
+                        <div class="settings-item">
+                            <div class="settings-item-content">
+                                <div class="settings-item-info">
+                                    <h3 class="settings-item-title">Смена email</h3>
+                                    <p class="settings-item-description">Подтвердите новый адрес через код</p>
+                                </div>
+                                <div class="settings-item-action">
+                                    <div class="input-group">
+                                        <input type="email" id="securityNewEmail" class="settings-input" placeholder="new@example.com">
+                                        <button class="settings-btn secondary" id="sendEmailChangeCodeBtn">Отправить код</button>
+                                    </div>
+                                    <div class="input-group">
+                                        <input type="text" id="securityEmailCode" class="settings-input" placeholder="Код из письма">
+                                        <button class="settings-btn primary" id="applyEmailChangeBtn">Изменить</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Смена пароля -->
+                        <div class="settings-item">
+                            <div class="settings-item-content">
+                                <div class="settings-item-info">
+                                    <h3 class="settings-item-title">Смена пароля</h3>
+                                    <p class="settings-item-description">Введите текущий и новый пароль</p>
+                                </div>
+                                <div class="settings-item-action">
+                                    <div class="input-group">
+                                        <input type="password" id="securityCurrentPassword" class="settings-input" placeholder="Текущий пароль">
+                                        <input type="password" id="securityNewPassword" class="settings-input" placeholder="Новый пароль">
+                                        <button class="settings-btn primary" id="applyPasswordChangeBtn">Сохранить</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Двухфакторная аутентификация -->
+                        <div class="settings-item">
+                            <div class="settings-item-content">
+                                <div class="settings-item-info">
+                                    <h3 class="settings-item-title">Двухфакторная аутентификация</h3>
+                                    <p class="settings-item-description">Google Authenticator (TOTP)</p>
+                                </div>
+                                <div class="settings-item-action">
+                                    <div id="twoFASection">
+                                        <div class="twofa-setup" id="twoFASetup" style="display:none;">
+                                            <div class="twofa-qr">
+                                                <div class="qr-label">Отсканируйте QR-код в Google Authenticator</div>
+                                                <img id="twoFAQrImg" alt="2FA QR" width="180" height="180">
+                                            </div>
+                                            <div class="input-group" style="margin-top:10px;">
+                                                <input type="text" id="twoFASecret" class="settings-input" readonly placeholder="Секрет">
+                                                <button class="settings-btn secondary" id="copy2FASecretBtn">Копировать</button>
+                                            </div>
+                                            <div class="input-group" style="margin-top:10px;">
+                                                <input type="text" id="twoFACodeInput" class="settings-input" placeholder="Код из приложения">
+                                                <button class="settings-btn primary" id="confirm2FASetupBtn">Включить 2FA</button>
+                                            </div>
+                                            <div class="twofa-tutorial" style="margin-top:12px;">
+                                                <div class="qr-label">Как включить 2FA:</div>
+                                                <ol>
+                                                    <li>Нажмите «Включить 2FA» — появится QR-код и секрет.</li>
+                                                    <li>Откройте Google Authenticator и добавьте новый аккаунт (сканируйте QR или введите секрет вручную).</li>
+                                                    <li>Введите одноразовый код из приложения и нажмите «Включить 2FA».</li>
+                                                    <li>Сохраните секрет в надёжном месте. При потере доступа восстановление потребует обращения в поддержку.</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                        <div class="twofa-actions" id="twoFAActions">
+                                            <button class="settings-btn primary" id="start2FASetupBtn">Включить 2FA</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- История входов -->
+                        <div class="settings-item">
+                            <div class="settings-item-content">
+                                <div class="settings-item-info">
+                                    <h3 class="settings-item-title">История входов</h3>
+                                    <p class="settings-item-description">Последние 50 входов (OS и IP)</p>
+                                </div>
+                                <div class="settings-item-action">
+                                    <div id="loginHistoryList" class="login-history-list"></div>
+                                    <button class="settings-btn secondary" id="refreshLoginHistoryBtn" style="margin-top:10px;">Обновить</button>
                                 </div>
                             </div>
                         </div>
@@ -533,7 +635,7 @@
                         <section class="card-section">
                         <div class="card-header">
                             <h2>Оценённые релизы</h2>
-                            <div class="period">...</div>
+                            <button id="viewAllRatedReleasesBtn" class="view-all-btn">Показать все</button>
                         </div>
                         <div id="ownRatedReleases" class="releases-grid"></div>
                         </section>
@@ -871,17 +973,61 @@
 
             <!-- Контейнер для полной страницы избранного -->
             <div id="favoritesContainer" class="favorites-full-page" style="display:none;">
-                <h1>Избранные релизы</h1>
-                <div class="releases-scroll-container">
-                    <div id="favoritesList" class="releases-grid"></div>
+                <div class="page-header">
+                    <button class="back-btn" id="favoritesBackBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 12H5M12 19L5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <h1>Избранные релизы</h1>
+                </div>
+                <div class="page-content">
+                    <div id="favoritesLoading" class="loading-container" style="display: none;">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Загрузка релизов...</div>
+                    </div>
+                    <div id="favoritesList" class="releases-list"></div>
+                    <div id="favoritesPagination" class="pagination"></div>
                 </div>
             </div>
 
             <!-- Контейнер для полной страницы избранных артистов -->
             <div id="artistFavoritesContainer" class="favorites-full-page" style="display:none;">
-                <h1>Избранные артисты</h1>
-                <div class="releases-scroll-container">
+                <div class="page-header">
+                    <button class="back-btn" id="artistFavoritesBackBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 12H5M12 19L5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <h1>Избранные артисты</h1>
+                </div>
+                <div class="page-content">
+                    <div id="artistFavoritesLoading" class="loading-container" style="display: none;">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Загрузка артистов...</div>
+                    </div>
                     <div id="artistFavoritesList" class="artist-favorites-grid-full"></div>
+                    <div id="artistFavoritesPagination" class="pagination"></div>
+                </div>
+            </div>
+
+            <!-- Контейнер для полной страницы всех оцененных релизов -->
+            <div id="ratedReleasesContainer" class="favorites-full-page" style="display:none;">
+                <div class="page-header">
+                    <button class="back-btn" id="ratedReleasesBackBtn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                            <path d="M19 12H5M12 19L5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <h1>Все оцененные релизы</h1>
+                </div>
+                <div class="page-content">
+                    <div id="ratedReleasesLoading" class="loading-container" style="display: none;">
+                        <div class="loading-spinner"></div>
+                        <div class="loading-text">Загрузка релизов...</div>
+                    </div>
+                    <div id="ratedReleasesList" class="releases-list"></div>
+                    <div id="ratedReleasesPagination" class="pagination"></div>
                 </div>
             </div>
         </div>
@@ -1036,12 +1182,22 @@
 <!-- Success Animation Modal -->
 <div id="successModal" class="modal">
   <div class="success-animation">
-    <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
-      <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
-      <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
-    </svg>
+    <div class="success-icon-container">
+      <svg class="checkmark" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52">
+        <circle class="checkmark__circle" cx="26" cy="26" r="25" fill="none"/>
+        <path class="checkmark__check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/>
+      </svg>
+      <div class="success-particles"></div>
+    </div>
     <h2>Регистрация успешна!</h2>
-    <p>Теперь вы можете войти в систему</p>
+    <p>Добро пожаловать в ChillMusic! Теперь вы можете войти в систему</p>
+    <div class="success-loading">
+      <div class="loading-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1080,6 +1236,25 @@
     </div>
   </div>
 </div>
+
+<!-- Модальное окно 2FA для входа -->
+<div id="twoFALoginModal" class="modal">
+  <div class="modal-content" style="max-width: 480px;">
+    <div class="modal-header">
+      <h2>Подтверждение входа (2FA)</h2>
+      <button class="close-btn" id="twoFALoginClose">&times;</button>
+    </div>
+    <form id="twoFALoginForm" class="modal-body" novalidate>
+      <div class="form-group">
+        <label for="twoFALoginCode">Код из приложения</label>
+        <input type="text" id="twoFALoginCode" name="twoFALoginCode" placeholder="123456" autocomplete="one-time-code" required>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="submit-btn">Подтвердить</button>
+      </div>
+    </form>
+  </div>
+  </div>
 
 <!-- Модальное окно добавления релиза -->
 <div id="addReleaseModal" class="modal">

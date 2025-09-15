@@ -1,13 +1,15 @@
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const path = require('path');
 const mysql = require('mysql2/promise');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 
-// Включаем режим разработки для email (показывать коды в консоли)
-process.env.DEBUG_EMAIL = 'false';
+// Загружаем переменные окружения из .env файла
+require('dotenv').config();
+
+// Импортируем новый email сервис
+const emailService = require('./email-service');
 
 
 const getAverageColor = require('fast-average-color').getAverageColor;
@@ -40,122 +42,25 @@ function clearSession() {
 }
 
 
-// Конфигурация SMTP для Reg.ru
-const smtpConfig = {
-  host: 'smtp.hosting.reg.ru',
-  port: 587,
-  secure: false, // true для 465, false для других портов
-  auth: {
-    user: 'admin_music@chill-music.ru',
-    pass: 'sU9cT6dM6ywO2lK0'
-  },
-  tls: {
-    rejectUnauthorized: false
-  }
-};
-
-// Альтернативная конфигурация SMTP (можно настроить через переменные окружения)
-const getAlternativeSmtpConfig = () => {
-  // Если есть переменные окружения для SMTP, используем их
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return {
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    };
-  }
-  return null;
-};
-
-const transporter = nodemailer.createTransport(smtpConfig);
-
-// Проверка SMTP подключения
-async function testSMTP() {
+// Инициализация email сервиса при запуске
+async function initializeEmailService() {
   try {
-    console.log('Тестирование SMTP подключения...');
+    console.log('🔧 Инициализация email сервиса...');
+    const result = await emailService.testSMTPConnection();
     
-    // Устанавливаем таймаут для проверки подключения
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('SMTP connection timeout after 10 seconds')), 10000);
-    });
-    
-    const verifyPromise = transporter.verify();
-    await Promise.race([verifyPromise, timeoutPromise]);
-    
-    console.log('✅ SMTP подключение успешно');
-    return true;
+    if (result.success) {
+      console.log('✅ Email сервис готов к работе');
+      const config = emailService.getConfigInfo();
+      console.log(`📧 Провайдер: ${config.provider}, Host: ${config.host}`);
+    } else {
+      console.log('⚠️ Email сервис недоступен:', result.error);
+    }
   } catch (error) {
-    console.error('❌ Ошибка SMTP:', error.message);
-    console.error('Детали ошибки SMTP:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response
-    });
-    
-    // Не пробуем альтернативные конфигурации, так как это может занять много времени
-    console.log('⚠️ SMTP недоступен, будет использоваться fallback режим');
-    return false;
+    console.error('❌ Ошибка инициализации email сервиса:', error.message);
   }
 }
 
-// Хранилище кодов подтверждения
-const confirmationCodes = new Map();
 
-// Функция отправки письма
-async function sendConfirmationEmail(email, code) {
-  try {
-    console.log(`📧 Отправка письма с кодом ${code} на ${email}`);
-    
-    const mailOptions = {
-      from: '"ChillMusic" <admin_music@chill-music.ru>',
-      to: email,
-      subject: 'Код подтверждения для ChillMusic',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-          <h2 style="color: #7830B7; text-align: center;">Ваш код подтверждения</h2>
-          <p style="text-align: center;">Используйте этот код для завершения регистрации:</p>
-          <div style="font-size: 32px; font-weight: bold; color: #7830B7; text-align: center; margin: 20px 0; letter-spacing: 5px;">
-            ${code}
-          </div>
-          <p style="text-align: center; color: #777;">Код действителен в течение 15 минут.</p>
-        </div>
-      `
-    };
-
-    console.log('📤 Отправляем письмо через SMTP...');
-    
-    // Устанавливаем таймаут для отправки письма
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Email sending timeout after 15 seconds')), 15000);
-    });
-    
-    const sendPromise = transporter.sendMail(mailOptions);
-    const info = await Promise.race([sendPromise, timeoutPromise]);
-    
-    console.log('✅ Письмо отправлено успешно:', info.messageId);
-    console.log('📧 Получатель:', email);
-    console.log('🔑 Код:', code);
-    return true;
-  } catch (error) {
-    console.error('❌ Ошибка отправки письма:', error);
-    console.error('Детали ошибки отправки:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode
-    });
-    throw new Error(`Не удалось отправить письмо: ${error.message}`);
-  }
-}
 
 // Конфигурация БД
 const dbConfig = {
@@ -164,13 +69,90 @@ const dbConfig = {
   password: 'SbMwsewMI531Xm6G',
   database: 'u2819853_default',
   waitForConnections: true,
-  connectionLimit: 20,
+  connectionLimit: 5,
   acquireTimeout: 60000,
   timeout: 60000,
-  reconnect: true
+  reconnect: true,
+  idleTimeout: 300000,
+  queueLimit: 0
 };
 
 const pool = mysql.createPool(dbConfig);
+
+// Кэш для релизов
+let releasesCache = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 30 * 1000; // 30 секунд
+
+// Функция для очистки кэша релизов
+function clearReleasesCache() {
+  releasesCache = null;
+  cacheTimestamp = null;
+  console.log('Кэш релизов очищен');
+}
+
+// Функция для проверки состояния кэша
+function getCacheStatus() {
+  const now = Date.now();
+  const isCacheValid = releasesCache && cacheTimestamp && (now - cacheTimestamp) < CACHE_DURATION;
+  const timeLeft = cacheTimestamp ? Math.max(0, CACHE_DURATION - (now - cacheTimestamp)) : 0;
+  
+  return {
+    hasCache: !!releasesCache,
+    isCacheValid,
+    timeLeft: Math.round(timeLeft / 1000),
+    cacheSize: releasesCache ? releasesCache.length : 0
+  };
+}
+
+// Альтернативный быстрый метод загрузки релизов
+ipcMain.handle('get-releases-fast', async () => {
+  console.log('=== ЭКСТРЕННАЯ БЫСТРАЯ ЗАГРУЗКА ===');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    // Самый простой запрос без JOIN'ов
+    const [rows] = await connection.query(`
+        SELECT 
+          id,
+          title,
+          type,
+          host_rating,
+          average_user_rating,
+          add_date,
+          image
+        FROM Releases
+        ORDER BY add_date DESC
+        LIMIT 50
+    `);
+    
+    const result = rows.map(row => ({
+      id: row.id,
+      title: row.title,
+      type: row.type,
+      host_rating: row.host_rating,
+      average_user_rating: row.average_user_rating,
+      add_date: row.add_date,
+      image: row.image ? row.image : null,
+      artist_names: 'Загрузка...',
+      artist_ids: [],
+      artist_name: 'Загрузка...',
+      artist_id: null
+    }));
+    
+    console.log(`Быстро загружено ${result.length} релизов`);
+    return result;
+    
+  } catch (err) {
+    console.error('Ошибка быстрой загрузки:', err.message);
+    throw new Error(`Быстрая загрузка не удалась: ${err.message}`);
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+});
 
 // Добавляем обработчики событий пула для отладки
 pool.on('connection', function (connection) {
@@ -190,120 +172,63 @@ pool.on('error', function(err) {
 });
 
 ipcMain.handle('get-all-releases', async () => {
-  console.log('=== ОБРАБОТЧИК get-all-releases ВЫЗВАН ===');
+  let connection;
   try {
-    console.log('Начинаем загрузку всех релизов...');
-    
-    // Запрос с JOIN'ами для получения исполнителей
-    const connection = await pool.getConnection();
-    console.log('Соединение получено');
-    
-    // Сначала проверим, существуют ли таблицы
-    console.log('Проверяем существование таблиц...');
-    try {
-      const [tables] = await connection.query("SHOW TABLES LIKE 'ReleaseArtists'");
-      console.log('Таблица ReleaseArtists существует:', tables.length > 0);
-      
-      const [artistsTables] = await connection.query("SHOW TABLES LIKE 'Artists'");
-      console.log('Таблица Artists существует:', artistsTables.length > 0);
-    } catch (err) {
-      console.log('Ошибка проверки таблиц:', err.message);
-    }
-    
-    console.log('Выполняем SQL запрос...');
-    let rows;
-    try {
-      // Пробуем запрос с JOIN'ами
-      [rows] = await connection.query(`
-          SELECT 
-            r.id,
-            r.title,
-            r.type,
-            r.host_rating,
-            r.average_user_rating,
-            r.add_date,
-            r.image,
-            GROUP_CONCAT(a.name SEPARATOR ', ') AS artist_names,
-            GROUP_CONCAT(a.id SEPARATOR ', ') AS artist_ids
-          FROM Releases r
-          LEFT JOIN ReleaseArtists ra ON r.id = ra.release_id
-          LEFT JOIN Artists a ON ra.artist_id = a.id
-          GROUP BY r.id
-          ORDER BY r.add_date DESC
-      `);
-      console.log('Запрос с JOIN\'ами выполнен успешно');
-    } catch (joinError) {
-      console.log('Ошибка запроса с JOIN\'ами:', joinError.message);
-      console.log('Пробуем простой запрос без JOIN\'ов...');
-      
-      // Fallback: простой запрос без JOIN'ов
-      [rows] = await connection.query(`
-          SELECT 
-            id,
-            title,
-            type,
-            host_rating,
-            average_user_rating,
-            add_date,
-            image
-          FROM Releases
-          ORDER BY add_date DESC
-      `);
-      console.log('Простой запрос выполнен успешно');
-    }
-    console.log(`Получено ${rows.length} релизов из БД`);
-    console.log('Первые несколько релизов:', rows.slice(0, 3));
-    
-    connection.release();
-    console.log('Соединение освобождено');
-    
-    // Обработка данных с исполнителями
-    console.log('Начинаем обработку данных...');
-    const result = rows.map((row, index) => {
-      try {
-        const processedRow = {
-          id: row.id,
-          title: row.title,
-          type: row.type,
-          host_rating: row.host_rating,
-          average_user_rating: row.average_user_rating,
-          add_date: row.add_date,
-          image: row.image ? row.image : null,
-          // Проверяем, есть ли данные об исполнителях
-          artist_names: row.artist_names || 'Неизвестный исполнитель',
-          artist_ids: row.artist_ids ? row.artist_ids.split(',').map(id => id.trim()) : [],
-          // Для совместимости со старым кодом
-          artist_name: row.artist_names || 'Неизвестный исполнитель',
-          artist_id: row.artist_ids ? row.artist_ids.split(',')[0].trim() : null
-        };
-        
-        if (index < 3) {
-          console.log(`Обработан релиз ${index + 1}:`, {
-            id: processedRow.id,
-            title: processedRow.title,
-            artist_names: processedRow.artist_names,
-            artist_ids: processedRow.artist_ids,
-            has_artist_data: !!row.artist_names
-          });
-        }
-        
-        return processedRow;
-      } catch (err) {
-        console.error(`Ошибка обработки релиза ${index}:`, err);
-        console.error('Проблемный row:', row);
-        throw err;
-      }
+    connection = await pool.getConnection();
+
+    const [rows] = await connection.query(`
+      SELECT 
+        r.id,
+        r.title,
+        r.type,
+        r.host_rating,
+        r.average_user_rating,
+        r.add_date,
+        r.image,
+        ar.artist_names,
+        ar.artist_ids
+      FROM Releases r
+      LEFT JOIN (
+        SELECT 
+          ra.release_id,
+          GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', ') AS artist_names,
+          GROUP_CONCAT(a.id ORDER BY a.id SEPARATOR ',') AS artist_ids
+        FROM ReleaseArtists ra
+        JOIN Artists a ON a.id = ra.artist_id
+        GROUP BY ra.release_id
+      ) ar ON ar.release_id = r.id
+      ORDER BY r.add_date DESC
+    `);
+
+    return rows.map(row => {
+      const artistIds = row.artist_ids ? String(row.artist_ids).split(',').map(v => v.trim()).filter(Boolean) : [];
+      return {
+        id: row.id,
+        title: row.title,
+        type: row.type,
+        host_rating: row.host_rating,
+        average_user_rating: row.average_user_rating,
+        add_date: row.add_date,
+        image: row.image ? row.image : null,
+        artist_names: row.artist_names || 'Неизвестный исполнитель',
+        artist_ids: artistIds,
+        // совместимость со старым рендером
+        artist_name: row.artist_names || 'Неизвестный исполнитель',
+        artist_id: artistIds.length ? artistIds[0] : null
+      };
     });
-    
-    console.log('Данные обработаны, возвращаем результат');
-    return result;
-    
   } catch (err) {
-    console.error('=== ОШИБКА В get-all-releases ===');
-    console.error('Error:', err.message);
-    console.error('Stack:', err.stack);
-    console.error('Full error object:', err);
-    throw new Error('Не удалось загрузить все релизы');
+    console.error('Ошибка загрузки релизов:', {
+      message: err.message,
+      code: err.code,
+      errno: err.errno,
+      sqlState: err.sqlState,
+      sqlMessage: err.sqlMessage,
+      stack: err.stack
+    });
+    throw new Error('Не удалось загрузить релизы');
+  } finally {
+    if (connection) connection.release();
   }
 });
 
@@ -311,11 +236,46 @@ ipcMain.handle('get-all-releases', async () => {
 async function testDatabase() {
   let conn;
   try {
+    console.log('=== ТЕСТ ПОДКЛЮЧЕНИЯ К БАЗЕ ДАННЫХ ===');
+    console.log('Конфигурация БД:', {
+      host: dbConfig.host,
+      user: dbConfig.user,
+      database: dbConfig.database,
+      connectionLimit: dbConfig.connectionLimit
+    });
+    
     conn = await pool.getConnection();
-    const [rows] = await conn.query('SELECT NOW() AS `current_time`');
-    console.log('Database connection OK. Current time:', rows[0].current_time);
+    console.log('Соединение с БД установлено');
+    
+    const [rows] = await conn.query('SELECT NOW()');
+    console.log('Database connection OK. Current time:', rows[0]['NOW()']);
+    
+    // Проверяем версию MySQL
+    const [versionRows] = await conn.query('SELECT VERSION() as version');
+    console.log('MySQL version:', versionRows[0].version);
+    
+    // Проверяем существование основных таблиц
+    const [tables] = await conn.query("SHOW TABLES");
+    const tableNames = tables.map(t => Object.values(t)[0]);
+    console.log('Найденные таблицы:', tableNames);
+    
+    const requiredTables = ['Releases', 'ReleaseArtists', 'Artists', 'Users'];
+    const missingTables = requiredTables.filter(table => !tableNames.includes(table));
+    
+    if (missingTables.length > 0) {
+      console.warn('⚠️ Отсутствуют таблицы:', missingTables);
+    } else {
+      console.log('✅ Все необходимые таблицы найдены');
+    }
+    
+    console.log('=== ТЕСТ ПОДКЛЮЧЕНИЯ ЗАВЕРШЕН ===');
   } catch (err) {
-    console.error('Database connection FAILED:', err);
+    console.error('=== ОШИБКА ПОДКЛЮЧЕНИЯ К БД ===');
+    console.error('Тип ошибки:', err.constructor.name);
+    console.error('Сообщение:', err.message);
+    console.error('Код ошибки:', err.code);
+    console.error('SQL State:', err.sqlState);
+    console.error('Stack trace:', err.stack);
     throw err;
   } finally {
     if (conn) conn.release();
@@ -451,6 +411,35 @@ async function initializeTables() {
       }
     }
     
+    // Создаем таблицу UserLoginHistory, если не существует
+    const [loginHistoryTables] = await connection.query("SHOW TABLES LIKE 'UserLoginHistory'");
+    if (loginHistoryTables.length === 0) {
+      console.log('Создаем таблицу UserLoginHistory...');
+      await connection.query(`
+        CREATE TABLE UserLoginHistory (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          ip_address VARCHAR(64) NULL,
+          os_info VARCHAR(255) NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE
+        )
+      `);
+      console.log('Таблица UserLoginHistory создана успешно');
+    }
+
+    // Добавляем поля для 2FA в таблицу Users, если их нет
+    try {
+      await connection.query('SELECT twofa_secret, is_twofa_enabled FROM Users LIMIT 1');
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR') {
+        console.log('Добавляем поля twofa_secret и is_twofa_enabled в таблицу Users...');
+        try { await connection.query('ALTER TABLE Users ADD COLUMN twofa_secret VARBINARY(128) NULL'); } catch (e) {}
+        try { await connection.query('ALTER TABLE Users ADD COLUMN is_twofa_enabled BOOLEAN DEFAULT FALSE'); } catch (e) {}
+        console.log('Поля для 2FA добавлены (или уже существуют)');
+      }
+    }
+
   } catch (err) {
     console.error('Ошибка инициализации таблиц:', err);
     throw err;
@@ -477,9 +466,16 @@ function createWindow() {
     }
   });
 
+  // Очищаем кэш при создании окна
+  clearReleasesCache();
+  console.log('Кэш очищен при создании окна');
+
   require('electron').Menu.setApplicationMenu(null)
   mainWindow.loadFile('home.html');
   mainWindow.webContents.openDevTools();
+  
+  // Инициализируем email сервис после создания окна
+  initializeEmailService();
 }
 
 // Обработчики IPC
@@ -492,21 +488,10 @@ ipcMain.handle('send-confirmation-code', async (event, email) => {
       throw new Error('Некорректный формат email');
     }
 
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 минут
-    
-    console.log(`🔑 Сгенерирован код: ${code} для ${email}`);
-    confirmationCodes.set(email, { code, expiresAt });
-    
-    console.log(`📧 Сохранено в кэше. Отправляем письмо...`);
-    try {
-      await sendConfirmationEmail(email, code);
-      console.log(`✅ Код подтверждения успешно отправлен на ${email}`);
-      return { success: true };
-    } catch (emailError) {
-      console.error('❌ Ошибка отправки email:', emailError);
-      throw new Error(`Не удалось отправить письмо: ${emailError.message}`);
-    }
+    // Используем новый email сервис
+    const result = await emailService.sendConfirmationEmail(email, 'ChillMusic');
+    console.log(`✅ Код подтверждения успешно отправлен на ${email}`);
+    return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('❌ Ошибка отправки кода:', error);
     console.error('Детали ошибки:', {
@@ -520,17 +505,8 @@ ipcMain.handle('send-confirmation-code', async (event, email) => {
 
 ipcMain.handle('verify-confirmation-code', async (event, { email, code }) => {
   try {
-    const savedCode = confirmationCodes.get(email);
-    
-    if (!savedCode || savedCode.expiresAt < Date.now()) {
-      throw new Error('Код подтверждения истёк или не существует');
-    }
-    
-    if (savedCode.code !== code) {
-      throw new Error('Неверный код подтверждения');
-    }
-    
-    confirmationCodes.delete(email);
+    // Используем новый email сервис для проверки кода
+    emailService.verifyConfirmationCode(email, code);
     return { success: true };
   } catch (error) {
     console.error('Ошибка проверки кода:', error);
@@ -589,6 +565,27 @@ ipcMain.handle('register-user', async (event, userData) => {
   }
 });
 
+// Получить список доступных лет по датам релизов
+ipcMain.handle('get-release-years', async () => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query(`
+      SELECT DISTINCT YEAR(add_date) AS yr
+      FROM Releases
+      WHERE add_date IS NOT NULL
+      ORDER BY yr DESC
+    `);
+    // Возвращаем массив, например [2025, 2024, 2021]
+    return rows.map(r => r.yr);
+  } catch (err) {
+    console.error('Error fetching release years:', err);
+    return [];
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 app.on('window-all-closed', () => {
   pool.end();
   app.quit();
@@ -609,12 +606,18 @@ ipcMain.handle('get-releases', async () => {
           r.average_user_rating,
           r.add_date,
           r.image,
-          GROUP_CONCAT(a.name SEPARATOR ', ') AS artist_names,
-          GROUP_CONCAT(a.id SEPARATOR ', ') AS artist_ids
+          ar.artist_names,
+          ar.artist_ids
         FROM Releases r
-        LEFT JOIN ReleaseArtists ra ON r.id = ra.release_id
-        LEFT JOIN Artists a ON ra.artist_id = a.id
-        GROUP BY r.id
+        LEFT JOIN (
+          SELECT 
+            ra.release_id,
+            GROUP_CONCAT(a.name ORDER BY a.name SEPARATOR ', ') AS artist_names,
+            GROUP_CONCAT(a.id ORDER BY a.id SEPARATOR ',') AS artist_ids
+          FROM ReleaseArtists ra
+          JOIN Artists a ON a.id = ra.artist_id
+          GROUP BY ra.release_id
+        ) ar ON ar.release_id = r.id
         ORDER BY r.add_date DESC
         LIMIT 10
     `);
@@ -642,15 +645,23 @@ ipcMain.handle('get-releases', async () => {
   }
 });
 
-ipcMain.handle('get-paged-releases', async (_event, { page = 1, pageSize = 20 }) => {
+ipcMain.handle('get-paged-releases', async (_event, { page = 1, pageSize = 20, filters = {} }) => {
   let connection;
   try {
     connection = await pool.getConnection();
 
     const offset = (page - 1) * pageSize;
 
+    // Подготавливаем условия фильтрации
+    const whereClauses = [];
+    const params = [];
+    if (filters.year) { whereClauses.push('YEAR(r.add_date) = ?'); params.push(filters.year); }
+    if (typeof filters.month === 'number') { whereClauses.push('MONTH(r.add_date) = ?'); params.push(filters.month + 1); }
+    if (filters.type) { whereClauses.push('r.type = ?'); params.push(filters.type); }
+    const whereSql = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
+
     // всего записей для подсчёта страниц
-    const [[{ total }]] = await connection.query(`SELECT COUNT(*) as total FROM Releases`);
+    const [[{ total }]] = await connection.query(`SELECT COUNT(*) as total FROM Releases r ${whereSql}`, params);
 
     // берем релизы постранично
     const [rows] = await connection.query(`
@@ -662,15 +673,16 @@ ipcMain.handle('get-paged-releases', async (_event, { page = 1, pageSize = 20 })
         r.average_user_rating,
         r.add_date,
         r.image,
-        GROUP_CONCAT(a.name SEPARATOR ', ') AS artist_names,
-        MIN(a.id) AS artist_id
+        GROUP_CONCAT(DISTINCT a.name ORDER BY a.name SEPARATOR ', ') AS artist_names,
+        GROUP_CONCAT(DISTINCT a.id ORDER BY a.id SEPARATOR ',') AS artist_ids
       FROM Releases r
       LEFT JOIN ReleaseArtists ra ON r.id = ra.release_id
       LEFT JOIN Artists a ON ra.artist_id = a.id
+      ${whereSql}
       GROUP BY r.id
       ORDER BY r.add_date DESC
       LIMIT ? OFFSET ?
-    `, [pageSize, offset]);
+    `, [...params, pageSize, offset]);
 
     return {
       releases: rows.map(row => ({
@@ -681,8 +693,11 @@ ipcMain.handle('get-paged-releases', async (_event, { page = 1, pageSize = 20 })
         average_user_rating: row.average_user_rating,
         add_date: row.add_date,
         image: row.image ? row.image : null,
+        artist_names: row.artist_names || 'Неизвестный исполнитель',
+        artist_ids: row.artist_ids ? String(row.artist_ids).split(',').map(v => v.trim()).filter(Boolean) : [],
+        // совместимость
         artist_name: row.artist_names || 'Неизвестный исполнитель',
-        artist_id: row.artist_id
+        artist_id: row.artist_ids ? String(row.artist_ids).split(',')[0] : null
       })),
       total
     };
@@ -1003,7 +1018,7 @@ ipcMain.handle('check-auth', async () => {
   try {
     connection = await pool.getConnection();
     const [users] = await connection.query(
-      'SELECT id, email, display_name, about, avatar, avatar_mime, banner, banner_mime, created_at, is_admin FROM Users WHERE auth_token = ?',
+      'SELECT id, email, display_name, about, avatar, avatar_mime, banner, banner_mime, created_at, is_admin, is_twofa_enabled FROM Users WHERE auth_token = ?',
       [token]
     );
     connection.release();
@@ -1035,7 +1050,8 @@ ipcMain.handle('check-auth', async () => {
       bannerMime: u.banner_mime || null,
       registrationDate: u.created_at,
       isAdmin: u.is_admin || 0,
-      isAdminLevel2: u.is_admin === 2
+      isAdminLevel2: u.is_admin === 2,
+      isTwoFAEnabled: !!u.is_twofa_enabled
     };
     
     console.log('=== DEBUG check-auth ===');
@@ -1530,6 +1546,9 @@ ipcMain.handle('createRelease', async (event, { title, type, date, image, artist
     // Фиксируем транзакцию
     await connection.commit();
     
+    // Очищаем кэш релизов
+    clearReleasesCache();
+    
     return releaseId;
   } catch (err) {
     // Откатываем транзакцию в случае ошибки
@@ -1800,6 +1819,86 @@ async function autoScroll(page) {
 
 // Кэш для изображений артистов
 const artistImageCache = new Map();
+// Pending login sessions awaiting 2FA verification
+const pendingLogins = new Map(); // pendingId -> { userId, email, createdAt }
+// Pending 2FA setup secrets per current session token
+const twofaSetupPending = new Map(); // token -> { secretBase32, createdAt }
+// 2FA attempt tracking per pendingId
+const twofaAttempts = new Map(); // pendingId -> { attempts: number, lastAttempt: timestamp, blockedUntil: timestamp }
+
+// ===== TOTP (Google Authenticator) helpers =====
+function base32ToBuffer(base32) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  let buffer = [];
+  const clean = (base32 || '').replace(/=+$/, '').toUpperCase().replace(/\s+/g, '');
+  for (let i = 0; i < clean.length; i++) {
+    const val = alphabet.indexOf(clean[i]);
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  for (let j = 0; j + 8 <= bits.length; j += 8) {
+    buffer.push(parseInt(bits.substring(j, j + 8), 2));
+  }
+  return Buffer.from(buffer);
+}
+
+function generateRandomSecretBase32(length = 32) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < bytes.length; i++) {
+    out += alphabet[bytes[i] % alphabet.length];
+  }
+  return out;
+}
+
+function hotp(secretBuffer, counter, digits = 6) {
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigUInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac('sha1', secretBuffer).update(counterBuffer).digest();
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const code = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16) | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  const otp = (code % 10 ** digits).toString().padStart(digits, '0');
+  return otp;
+}
+
+function verifyTotp(secretBase32, code, timeStep = 30, digits = 6, skew = 1) {
+  try {
+    const secretBuffer = base32ToBuffer(secretBase32);
+    const counter = Math.floor(Date.now() / 1000 / timeStep);
+    const normalized = String(code || '').replace(/\s+/g, '');
+    for (let i = -skew; i <= skew; i++) {
+      const candidate = hotp(secretBuffer, counter + i, digits);
+      if (candidate === normalized) return true;
+    }
+  } catch (e) {
+    return false;
+  }
+  return false;
+}
+
+async function recordLoginHistory(connection, userId) {
+  try {
+    const platform = os.platform();
+    const release = os.release();
+    const arch = os.arch();
+    const osInfo = `${platform} ${release} (${arch})`;
+    let ipAddress = null;
+    try {
+      const { data } = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
+      ipAddress = data && data.ip ? data.ip : null;
+    } catch (e) {
+      ipAddress = null;
+    }
+    await connection.query(
+      'INSERT INTO UserLoginHistory (user_id, ip_address, os_info) VALUES (?, ?, ?)',
+      [userId, ipAddress, osInfo]
+    );
+  } catch (e) {
+    console.warn('Failed to record login history:', e.message);
+  }
+}
 
 // ====== ARTIST FAVORITES SYSTEM ======
 
@@ -2490,30 +2589,295 @@ ipcMain.handle('login-user', async (event, { email, password }) => {
     if (inputHash !== user.password_hash) {
       throw new Error('Неверный пароль');
     }
-    
-    // Генерируем токен
+
+    // Если включено 2FA, возвращаем промежуточный статус
+    if (user.is_twofa_enabled) {
+      const pendingId = crypto.randomBytes(16).toString('hex');
+      pendingLogins.set(pendingId, { userId: user.id, email: user.email, createdAt: Date.now() });
+      // Инициализируем счетчик попыток
+      twofaAttempts.set(pendingId, { attempts: 0, lastAttempt: null, blockedUntil: null });
+      return { success: true, requires2fa: true, pendingId };
+    }
+
+    // Без 2FA: обычный вход
     const token = crypto.randomBytes(32).toString('hex');
-    
-    // Обновляем токен в БД
-    await connection.query(
-      'UPDATE Users SET auth_token = ? WHERE id = ?',
-      [token, user.id]
-    );
-    
-    // Сохраняем сессию
+    await connection.query('UPDATE Users SET auth_token = ? WHERE id = ?', [token, user.id]);
     saveSession(token);
-    
-    return {
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.display_name,
-        avatar: user.avatar || 'images/default-avatar.png'
-      }
-    };
+    await recordLoginHistory(connection, user.id);
+
+    return { success: true, user: { id: user.id, email: user.email, displayName: user.display_name } };
   } catch (err) {
     console.error('Login error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Завершение входа с 2FA
+ipcMain.handle('verify-2fa-login', async (event, { pendingId, code }) => {
+  let connection;
+  try {
+    const pending = pendingLogins.get(pendingId);
+    if (!pending) {
+      return { success: false, error: 'Сессия входа истекла. Попробуйте войти заново' };
+    }
+    if (Date.now() - pending.createdAt > 5 * 60 * 1000) { // 5 минут
+      pendingLogins.delete(pendingId);
+      twofaAttempts.delete(pendingId);
+      return { success: false, error: 'Время ввода кода истекло. Попробуйте войти заново' };
+    }
+
+    // Проверяем блокировку
+    const attemptData = twofaAttempts.get(pendingId);
+    if (attemptData && attemptData.blockedUntil && Date.now() < attemptData.blockedUntil) {
+      const remainingTime = Math.ceil((attemptData.blockedUntil - Date.now()) / 1000 / 60);
+      return { success: false, error: `Доступ заблокирован на ${remainingTime} минут` };
+    }
+
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT id, display_name, email, twofa_secret FROM Users WHERE id = ?', [pending.userId]);
+    if (rows.length === 0) {
+      return { success: false, error: 'Пользователь не найден' };
+    }
+    const user = rows[0];
+    const secretBase32 = user.twofa_secret ? Buffer.from(user.twofa_secret).toString('utf8') : null;
+    if (!secretBase32) {
+      return { success: false, error: 'Ошибка настройки безопасности' };
+    }
+    const ok = verifyTotp(secretBase32, code);
+    
+    if (!ok) {
+      // Неверный код - увеличиваем счетчик попыток
+      const currentAttempts = attemptData ? attemptData.attempts + 1 : 1;
+      const remainingAttempts = 3 - currentAttempts;
+      
+      if (currentAttempts >= 3) {
+        // Блокируем на 10 минут
+        const blockedUntil = Date.now() + (10 * 60 * 1000);
+        twofaAttempts.set(pendingId, { 
+          attempts: currentAttempts, 
+          lastAttempt: Date.now(), 
+          blockedUntil: blockedUntil 
+        });
+        // Очищаем данные после блокировки
+        setTimeout(() => {
+          pendingLogins.delete(pendingId);
+          twofaAttempts.delete(pendingId);
+        }, 10 * 60 * 1000);
+        return { success: false, error: 'Превышено количество попыток. Доступ заблокирован на 10 минут', blocked: true };
+      } else {
+        // Обновляем счетчик попыток
+        twofaAttempts.set(pendingId, { 
+          attempts: currentAttempts, 
+          lastAttempt: Date.now(), 
+          blockedUntil: null 
+        });
+        const attemptWord = remainingAttempts === 1 ? 'попытка' : 'попытки';
+        return { success: false, error: `Неверный код 2FA. У вас осталось ${remainingAttempts} ${attemptWord}, после чего вы будете заблокированы на 10 минут.` };
+      }
+    }
+
+    // Успешная верификация - очищаем данные
+    const token = crypto.randomBytes(32).toString('hex');
+    await connection.query('UPDATE Users SET auth_token = ? WHERE id = ?', [token, user.id]);
+    saveSession(token);
+    await recordLoginHistory(connection, user.id);
+    pendingLogins.delete(pendingId);
+    twofaAttempts.delete(pendingId);
+
+    return { success: true, user: { id: user.id, email: user.email, displayName: user.display_name } };
+  } catch (err) {
+    console.error('2FA verify login error:', err);
+    return { success: false, error: 'Произошла ошибка при проверке кода' };
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Получение истории входов текущего пользователя
+ipcMain.handle('get-login-history', async () => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query('SELECT id FROM Users WHERE auth_token = ?', [token]);
+    if (users.length === 0) throw new Error('Пользователь не найден');
+    const userId = users[0].id;
+    const [rows] = await connection.query(
+      'SELECT ip_address, os_info, created_at FROM UserLoginHistory WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      [userId]
+    );
+    return rows;
+  } catch (err) {
+    console.error('get-login-history error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Смена пароля
+ipcMain.handle('change-password', async (event, { currentPassword, newPassword }) => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query('SELECT id, password_hash, salt FROM Users WHERE auth_token = ?', [token]);
+    if (users.length === 0) throw new Error('Пользователь не найден');
+    const user = users[0];
+    const inputHash = crypto.pbkdf2Sync(currentPassword, user.salt, 1000, 64, 'sha512').toString('hex');
+    if (inputHash !== user.password_hash) throw new Error('Текущий пароль неверен');
+
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    const newHash = crypto.pbkdf2Sync(newPassword, newSalt, 1000, 64, 'sha512').toString('hex');
+    await connection.query('UPDATE Users SET password_hash = ?, salt = ? WHERE id = ?', [newHash, newSalt, user.id]);
+    return { success: true };
+  } catch (err) {
+    console.error('change-password error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Смена email (через предварительную верификацию кода на новый email)
+ipcMain.handle('change-email', async (event, { newEmail, code }) => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    // Проверяем код подтверждения (бросит исключение, если неверен)
+    emailService.verifyConfirmationCode(newEmail, code);
+
+    connection = await pool.getConnection();
+    // Проверяем, что email не занят
+    const [exists] = await connection.query('SELECT id FROM Users WHERE email = ?', [newEmail]);
+    if (exists.length > 0) throw new Error('Этот email уже используется');
+
+    await connection.query('UPDATE Users SET email = ? WHERE auth_token = ?', [newEmail, token]);
+    return { success: true };
+  } catch (err) {
+    console.error('change-email error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Инициация подключения 2FA: генерируем секрет и otpauth URL
+ipcMain.handle('init-2fa-setup', async () => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [users] = await connection.query('SELECT id, email FROM Users WHERE auth_token = ?', [token]);
+    if (users.length === 0) throw new Error('Пользователь не найден');
+    const user = users[0];
+    const secretBase32 = generateRandomSecretBase32(32);
+    twofaSetupPending.set(token, { secretBase32, createdAt: Date.now() });
+    const issuer = encodeURIComponent('ChillMusic');
+    const label = encodeURIComponent(user.email || 'user');
+    const otpauth = `otpauth://totp/${issuer}:${label}?secret=${secretBase32}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+    return { success: true, secret: secretBase32, otpauth };
+  } catch (err) {
+    console.error('init-2fa-setup error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Подтверждение и включение 2FA кодом
+ipcMain.handle('enable-2fa', async (event, { code }) => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    const pending = twofaSetupPending.get(token);
+    if (!pending) throw new Error('Настройка безопасности не активна');
+    if (Date.now() - pending.createdAt > 10 * 60 * 1000) { // 10 минут
+      twofaSetupPending.delete(token);
+      throw new Error('Время настройки истекло. Попробуйте заново');
+    }
+    const ok = verifyTotp(pending.secretBase32, code);
+    if (!ok) throw new Error('Неверный код 2FA');
+
+    connection = await pool.getConnection();
+    await connection.query('UPDATE Users SET twofa_secret = ?, is_twofa_enabled = 1 WHERE auth_token = ?', [Buffer.from(pending.secretBase32, 'utf8'), token]);
+    twofaSetupPending.delete(token);
+    return { success: true };
+  } catch (err) {
+    console.error('enable-2fa error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Отключение 2FA после ввода кода
+ipcMain.handle('disable-2fa', async (event, { code }) => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT twofa_secret FROM Users WHERE auth_token = ?', [token]);
+    if (rows.length === 0) throw new Error('Пользователь не найден');
+    const secretBase32 = rows[0].twofa_secret ? Buffer.from(rows[0].twofa_secret).toString('utf8') : null;
+    if (!secretBase32) throw new Error('Ошибка настройки безопасности');
+    const ok = verifyTotp(secretBase32, code);
+    if (!ok) throw new Error('Неверный код 2FA');
+    await connection.query('UPDATE Users SET twofa_secret = NULL, is_twofa_enabled = 0 WHERE auth_token = ?', [token]);
+    return { success: true };
+  } catch (err) {
+    console.error('disable-2fa error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Инициация отвязки 2FA: отправка кода на email
+ipcMain.handle('init-disable-2fa', async () => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT email FROM Users WHERE auth_token = ?', [token]);
+    if (rows.length === 0) throw new Error('Пользователь не найден');
+    const email = rows[0].email;
+    await emailService.sendConfirmationEmail(email, 'ChillMusic');
+    return { success: true };
+  } catch (err) {
+    console.error('init-disable-2fa error:', err);
+    throw err;
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// Подтверждение отвязки 2FA: проверка кода с email
+ipcMain.handle('confirm-disable-2fa', async (event, { code }) => {
+  const token = loadSession();
+  if (!token) throw new Error('Не авторизован');
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.query('SELECT id, email FROM Users WHERE auth_token = ?', [token]);
+    if (rows.length === 0) throw new Error('Пользователь не найден');
+    const user = rows[0];
+    // Проверяем email-код
+    emailService.verifyConfirmationCode(user.email, code);
+    // Отключаем 2FA
+    await connection.query('UPDATE Users SET twofa_secret = NULL, is_twofa_enabled = 0 WHERE id = ?', [user.id]);
+    return { success: true };
+  } catch (err) {
+    console.error('confirm-disable-2fa error:', err);
     throw err;
   } finally {
     if (connection) connection.release();
@@ -2968,8 +3332,54 @@ ipcMain.handle('get-telegram-config', async () => {
   }
 });
 
+// Тестирование подключения к базе данных
+ipcMain.handle('test-database-connection', async () => {
+  try {
+    console.log('=== ТЕСТ ПОДКЛЮЧЕНИЯ К БД (из интерфейса) ===');
+    await testDatabase();
+    return { success: true, message: 'Подключение к базе данных успешно' };
+  } catch (error) {
+    console.error('Ошибка тестирования БД:', error);
+    return { 
+      success: false, 
+      message: `Ошибка подключения к БД: ${error.message}`,
+      details: {
+        code: error.code,
+        sqlState: error.sqlState,
+        stack: error.stack
+      }
+    };
+  }
+});
+
+// Принудительная очистка кэша релизов
+ipcMain.handle('clear-releases-cache', async () => {
+  try {
+    clearReleasesCache();
+    return { success: true, message: 'Кэш релизов очищен' };
+  } catch (error) {
+    console.error('Ошибка очистки кэша:', error);
+    return { success: false, message: `Ошибка очистки кэша: ${error.message}` };
+  }
+});
+
+// Получение статуса кэша
+ipcMain.handle('get-cache-status', async () => {
+  try {
+    return getCacheStatus();
+  } catch (error) {
+    console.error('Ошибка получения статуса кэша:', error);
+    return { error: error.message };
+  }
+});
+
 app.whenReady().then(async () => {
   try {
+    // Принудительно очищаем кэш при запуске
+    console.log('=== ЗАПУСК ПРИЛОЖЕНИЯ ===');
+    clearReleasesCache();
+    console.log('Кэш релизов очищен при запуске');
+    
     await testDatabase();
     await initializeTables();
     

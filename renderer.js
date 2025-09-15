@@ -473,16 +473,64 @@ async function toggleFavorite(userId, releaseId, button) {
 }
 
 // Загрузка и отображение избранных релизов для полной страницы
-async function loadUserFavorites() {
+async function loadUserFavorites(page = 1, pageSize = 20) {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
-  
+
+  const loadingContainer = document.getElementById('favoritesLoading');
+  const favoritesContainer = document.getElementById('favoritesList');
+  const paginationContainer = document.getElementById('favoritesPagination');
+
   try {
+    // Показываем индикатор загрузки
+    if (loadingContainer) loadingContainer.style.display = 'flex';
+    if (favoritesContainer) favoritesContainer.innerHTML = '';
+    if (paginationContainer) paginationContainer.innerHTML = '';
+
     const favorites = await window.electronAPI.getUserFavorites(currentUser.id);
-    renderFavorites(favorites);
+    
+    if (!favorites || favorites.length === 0) {
+      if (favoritesContainer) {
+        favoritesContainer.innerHTML = `
+          <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888;">
+            <div style="font-size: 48px; margin-bottom: 20px;">❤️</div>
+            <h3 style="color: #fff; margin-bottom: 10px;">Нет избранных релизов</h3>
+            <p>Добавляйте релизы в избранное, нажимая на ❤️ на странице релиза</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Применяем пагинацию
+    const totalPages = Math.ceil(favorites.length / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedFavorites = favorites.slice(startIndex, endIndex);
+
+    // Отображаем релизы
+    renderFavorites(paginatedFavorites);
+
+    // Отображаем пагинацию
+    if (totalPages > 1) {
+      renderUniversalPagination(paginationContainer, page, totalPages, (newPage) => {
+        loadUserFavorites(newPage, pageSize);
+      });
+    }
+
   } catch (err) {
     console.error('Ошибка загрузки избранного:', err);
-    showNotification('Не удалось загрузить избранное', 'error');
+    if (favoritesContainer) {
+      favoritesContainer.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #ff6b6b;">
+          <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
+          <h3 style="color: #fff; margin-bottom: 10px;">Ошибка загрузки</h3>
+          <p>Не удалось загрузить избранные релизы</p>
+        </div>
+      `;
+    }
+  } finally {
+    if (loadingContainer) loadingContainer.style.display = 'none';
   }
 }
 
@@ -547,7 +595,7 @@ function renderProfileFavorites(favorites) {
         }
         <div class="release-rating">${renderRating(release.host_rating)}</div>
         <button class="pin-btn ${release.is_pinned ? 'pinned' : ''}" title="${release.is_pinned ? 'Открепить' : 'Закрепить'}" data-release-id="${release.id}">
-          <img src="images/heart-color.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/pin_btn.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="release-info">
@@ -560,7 +608,7 @@ function renderProfileFavorites(favorites) {
     
     // Создаем кликабельные ссылки артистов
     const artistContainer = card.querySelector('.release-artists');
-    if (release.artist_names && release.artist_ids) {
+    if (release.artist_names) {
       createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
     } else {
       artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
@@ -689,6 +737,8 @@ function showAllFavorites() {
   document.getElementById('allReleasesPage').style.display = 'none';
   document.getElementById('searchContainer').style.display = 'none';
   document.getElementById('favoritesContainer').style.display = 'block';
+  document.getElementById('artistFavoritesContainer').style.display = 'none';
+  document.getElementById('ratedReleasesContainer').style.display = 'none';
   document.getElementById('releasePage').style.display = 'none';
   document.getElementById('artistPage').style.display = 'none';
   document.getElementById('rateReleasePage').style.display = 'none';
@@ -714,41 +764,43 @@ function renderFavorites(favorites) {
   container.innerHTML = '';
   favorites.forEach(release => {
     const card = document.createElement('div');
-    card.className = 'release-card';
+    card.className = 'rating-card';
     
     const imageUrl = release.image ? bufferToImage(release.image) : null;
     
     card.innerHTML = `
-      <div class="release-image-container">
+      <div class="rating-image-container">
         ${imageUrl ? 
-          `<img src="${imageUrl}" class="release-image" alt="${release.title || 'Release image'}">` : 
-          `<div class="release-image"></div>`
+          `<img src="${imageUrl}" class="rating-image" alt="${release.title || 'Release image'}">` : 
+          `<div class="rating-image" style="background-color: #1f1f1f;"></div>`
         }
         <button class="pin-btn ${release.is_pinned ? 'pinned' : ''}" title="${release.is_pinned ? 'Открепить' : 'Закрепить'}" data-release-id="${release.id}">
-          <img src="images/heart-color.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/pin_btn.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
-      <div class="release-info">
-        <div class="text-container">
-          <h3 class="release-title" title="${release.title || 'Без названия'}">
+      <div class="rating-info">
+        <div class="rating-text">
+          <p class="rating-title" title="${release.title || 'Без названия'}">
             ${release.title || 'Без названия'}
-          </h3>
-          <div class="release-artists" title="${release.artist_names || release.artist_name || 'Исполнитель не указан'}"></div>
-          <div class="release-meta">
-            <span class="release-type">${release.type || 'N/A'}</span>
-          </div>
+          </p>
+          <div class="rating-artist" title="${release.artist_names || release.artist_name || 'Исполнитель не указан'}"></div>
         </div>
-        <div class="ratings-container">
-          <div class="release-meta_two">
-            <div class="release-rating">${renderRating(release.host_rating)}</div>
-          </div>
+      </div>
+      <div class="rating-score-container">
+        <div class="rating" aria-label="Оценка автора ${release.host_rating || '—'}">
+          <span class="dot" aria-hidden="true"></span>
+          ${renderRating(release.host_rating)}
+        </div>
+        <div class="rating" aria-label="Средняя оценка пользователей ${release.average_user_rating || '—'}">
+          <span class="dot turquoise-dot" aria-hidden="true"></span>
+          ${renderRating(release.average_user_rating)}
         </div>
       </div>
     `;
     
     // Создаем кликабельные ссылки артистов
-    const artistContainer = card.querySelector('.release-artists');
-    if (release.artist_names && release.artist_ids) {
+    const artistContainer = card.querySelector('.rating-artist');
+    if (release.artist_names) {
       createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
     } else {
       artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
@@ -960,40 +1012,40 @@ function renderOwnRatedReleases(releases, showAll = false) {
   });
 
   // Добавляем кнопку "Посмотреть всё" если есть больше релизов и мы не показываем все
-  if (hasMore && !showAll) {
-    const showAllButton = document.createElement('button');
-    showAllButton.className = 'show-all-button';
-    showAllButton.textContent = `Посмотреть всё (${releases.length})`;
-    showAllButton.style.cssText = `
-      width: 100%;
-      padding: 12px;
-      margin-top: 15px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.3s ease;
-    `;
+  // // if (hasMore && !showAll) {
+  // //   const showAllButton = document.createElement('button');
+  // //   showAllButton.className = 'show-all-button';
+  // //   showAllButton.textContent = `Посмотреть всё (${releases.length})`;
+  // //   showAllButton.style.cssText = `
+  // //     width: 100%;
+  // //     padding: 12px;
+  // //     margin-top: 15px;
+  // //     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  // //     color: white;
+  // //     border: none;
+  // //     border-radius: 8px;
+  // //     font-size: 14px;
+  // //     font-weight: 500;
+  // //     cursor: pointer;
+  // //     transition: all 0.3s ease;
+  // //   `;
     
-    showAllButton.addEventListener('mouseenter', () => {
-      showAllButton.style.transform = 'translateY(-2px)';
-      showAllButton.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-    });
+  // //   showAllButton.addEventListener('mouseenter', () => {
+  // //     showAllButton.style.transform = 'translateY(-2px)';
+  // //     showAllButton.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+  // //   });
     
-    showAllButton.addEventListener('mouseleave', () => {
-      showAllButton.style.transform = 'translateY(0)';
-      showAllButton.style.boxShadow = 'none';
-    });
+  // //   showAllButton.addEventListener('mouseleave', () => {
+  // //     showAllButton.style.transform = 'translateY(0)';
+  // //     showAllButton.style.boxShadow = 'none';
+  // //   });
     
-    showAllButton.addEventListener('click', () => {
-      renderOwnRatedReleases(releases, true);
-    });
+  // //   showAllButton.addEventListener('click', () => {
+  // //     renderOwnRatedReleases(releases, true);
+  // //   });
     
-    container.appendChild(showAllButton);
-  }
+  // //   container.appendChild(showAllButton);
+  // }
 }
 
 // Отображение избранных артистов в профиле (компактный вид)
@@ -1034,7 +1086,7 @@ function renderProfileArtistFavorites(favorites) {
       <div class="artist-avatar-container">
         <img src="${avatarUrl}" class="artist-avatar" alt="${artist.name}" onerror="this.src='images/default-avatar.png'">
         <button class="pin-btn ${artist.is_pinned ? 'pinned' : ''}" title="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" data-artist-id="${artist.id}">
-          <img src="images/heart-color.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/pin_btn.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="artist-info">
@@ -1107,6 +1159,7 @@ function showAllArtistFavorites() {
   document.getElementById('searchContainer').style.display = 'none';
   document.getElementById('favoritesContainer').style.display = 'none';
   document.getElementById('artistFavoritesContainer').style.display = 'block';
+  document.getElementById('ratedReleasesContainer').style.display = 'none';
   document.getElementById('releasePage').style.display = 'none';
   document.getElementById('artistPage').style.display = 'none';
   document.getElementById('rateReleasePage').style.display = 'none';
@@ -1119,17 +1172,267 @@ function showAllArtistFavorites() {
   loadUserArtistFavorites();
 }
 
-// Загрузка и отображение избранных артистов для полной страницы
-async function loadUserArtistFavorites() {
+// Показать полную страницу всех оцененных релизов
+function showAllRatedReleases() {
+  // Скрываем все страницы
+  document.getElementById('mainPageContent').style.display = 'none';
+  document.getElementById('allReleasesPage').style.display = 'none';
+  document.getElementById('searchContainer').style.display = 'none';
+  document.getElementById('favoritesContainer').style.display = 'none';
+  document.getElementById('artistFavoritesContainer').style.display = 'none';
+  document.getElementById('ratedReleasesContainer').style.display = 'block';
+  document.getElementById('releasePage').style.display = 'none';
+  document.getElementById('artistPage').style.display = 'none';
+  document.getElementById('rateReleasePage').style.display = 'none';
+  document.getElementById('profile-page').style.display = 'none';
+  
+  // Снимаем активные классы с кнопок
+  document.querySelectorAll('.icon-btn[data-page]').forEach(b => b.classList.remove('active'));
+  
+  // Загружаем все оцененные релизы
+  loadUserRatedReleases();
+}
+
+// Загрузка и отображение всех оцененных релизов для полной страницы
+async function loadUserRatedReleases(page = 1, pageSize = 20) {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
-  
+
+  const loadingContainer = document.getElementById('ratedReleasesLoading');
+  const releasesContainer = document.getElementById('ratedReleasesList');
+  const paginationContainer = document.getElementById('ratedReleasesPagination');
+
   try {
+    // Показываем индикатор загрузки
+    if (loadingContainer) loadingContainer.style.display = 'flex';
+    if (releasesContainer) releasesContainer.innerHTML = '';
+    if (paginationContainer) paginationContainer.innerHTML = '';
+
+    // Загружаем оцененные релизы пользователя
+    const ratedReleases = await window.electronAPI.getUserRatedReleases(currentUser.id);
+    
+    if (!ratedReleases || ratedReleases.length === 0) {
+      if (releasesContainer) {
+        releasesContainer.innerHTML = `
+          <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888;">
+            <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+            <h3 style="color: #fff; margin-bottom: 10px;">Нет оцененных релизов</h3>
+            <p>Вы пока не оценили ни одного релиза</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Применяем пагинацию
+    const totalPages = Math.ceil(ratedReleases.length / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedReleases = ratedReleases.slice(startIndex, endIndex);
+
+    // Отображаем релизы
+    renderRatedReleases(paginatedReleases);
+
+    // Отображаем пагинацию
+    if (totalPages > 1) {
+      renderUniversalPagination(paginationContainer, page, totalPages, (newPage) => {
+        loadUserRatedReleases(newPage, pageSize);
+      });
+    }
+
+  } catch (error) {
+    console.error('Ошибка загрузки оцененных релизов:', error);
+    if (releasesContainer) {
+      releasesContainer.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #ff6b6b;">
+          <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
+          <h3 style="color: #fff; margin-bottom: 10px;">Ошибка загрузки</h3>
+          <p>Не удалось загрузить оцененные релизы</p>
+        </div>
+      `;
+    }
+  } finally {
+    if (loadingContainer) loadingContainer.style.display = 'none';
+  }
+}
+
+// Отображение оцененных релизов
+function renderRatedReleases(releases) {
+  const container = document.getElementById('ratedReleasesList');
+  if (!container) return;
+
+  container.innerHTML = '';
+
+  releases.forEach(release => {
+    const releaseCard = createReleaseCard(release);
+    container.appendChild(releaseCard);
+  });
+}
+
+// Создание карточки релиза (точно как на странице всех релизов)
+function createReleaseCard(release) {
+  const card = document.createElement('div');
+  card.className = 'rating-card';
+  
+  const imageUrl = release.image ? bufferToImage(release.image) : null;
+  
+  card.innerHTML = `
+    <div class="rating-image-container">
+      ${imageUrl ? 
+        `<img src="${imageUrl}" class="rating-image" alt="${release.title || 'Release image'}">` : 
+        `<div class="rating-image" style="background-color: #1f1f1f;"></div>`
+      }
+    </div>
+    <div class="rating-info">
+      <div class="rating-text">
+        <p class="rating-title" title="${release.title || 'Без названия'}">
+          ${release.title || 'Без названия'}
+        </p>
+        <div class="rating-artist" title="${release.artist_names || release.artist_name || 'Исполнитель не указан'}"></div>
+      </div>
+    </div>
+    <div class="rating-score-container">
+      <div class="rating" aria-label="Оценка автора ${release.host_rating || '—'}">
+        <span class="dot" aria-hidden="true"></span>
+        ${renderRating(release.host_rating)}
+      </div>
+      <div class="rating" aria-label="Средняя оценка пользователей ${release.average_user_rating || '—'}">
+        <span class="dot turquoise-dot" aria-hidden="true"></span>
+        ${renderRating(release.average_user_rating)}
+      </div>
+    </div>
+  `;
+  
+  // Создаем кликабельные ссылки артистов
+  const artistContainer = card.querySelector('.rating-artist');
+  if (release.artist_names) {
+    createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
+  } else {
+    artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
+  }
+  
+  // Добавляем обработчик клика для перехода к релизу
+  card.addEventListener('click', (e) => {
+    // Не открываем релиз, если кликнули по артисту
+    if (!e.target.closest('.artist-link')) {
+      handleReleaseClick(release.id);
+    }
+  });
+  
+  return card;
+}
+
+// Универсальная функция пагинации
+function renderUniversalPagination(container, currentPage, totalPages, onPageChange) {
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  if (totalPages <= 1) return;
+  
+  // Кнопка "Назад"
+  if (currentPage > 1) {
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '← Назад';
+    prevBtn.className = 'pagination-btn';
+    prevBtn.onclick = () => onPageChange(currentPage - 1);
+    container.appendChild(prevBtn);
+  }
+  
+  // Номера страниц
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
+      const btn = document.createElement('button');
+      btn.textContent = i;
+      btn.className = 'pagination-btn';
+      btn.disabled = i === currentPage;
+      if (i === currentPage) {
+        btn.classList.add('active');
+      }
+      btn.onclick = () => onPageChange(i);
+      container.appendChild(btn);
+    } else if (i === 2 && currentPage > 4) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      dots.className = 'pagination-dots';
+      container.appendChild(dots);
+    } else if (i === totalPages - 1 && currentPage < totalPages - 3) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      dots.className = 'pagination-dots';
+      container.appendChild(dots);
+    }
+  }
+  
+  // Кнопка "Вперёд"
+  if (currentPage < totalPages) {
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Вперёд →';
+    nextBtn.className = 'pagination-btn';
+    nextBtn.onclick = () => onPageChange(currentPage + 1);
+    container.appendChild(nextBtn);
+  }
+}
+
+// Загрузка и отображение избранных артистов для полной страницы
+async function loadUserArtistFavorites(page = 1, pageSize = 20) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return;
+
+  const loadingContainer = document.getElementById('artistFavoritesLoading');
+  const favoritesContainer = document.getElementById('artistFavoritesList');
+  const paginationContainer = document.getElementById('artistFavoritesPagination');
+
+  try {
+    // Показываем индикатор загрузки
+    if (loadingContainer) loadingContainer.style.display = 'flex';
+    if (favoritesContainer) favoritesContainer.innerHTML = '';
+    if (paginationContainer) paginationContainer.innerHTML = '';
+
     const favorites = await window.electronAPI.getUserArtistFavorites(currentUser.id);
-    renderArtistFavorites(favorites);
+    
+    if (!favorites || favorites.length === 0) {
+      if (favoritesContainer) {
+        favoritesContainer.innerHTML = `
+          <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #888;">
+            <div style="font-size: 48px; margin-bottom: 20px;">🎤</div>
+            <h3 style="color: #fff; margin-bottom: 10px;">Нет избранных артистов</h3>
+            <p>Добавляйте артистов в избранное, нажимая на ❤️ на странице артиста</p>
+          </div>
+        `;
+      }
+      return;
+    }
+
+    // Применяем пагинацию
+    const totalPages = Math.ceil(favorites.length / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const paginatedFavorites = favorites.slice(startIndex, endIndex);
+
+    // Отображаем артистов
+    renderArtistFavorites(paginatedFavorites);
+
+    // Отображаем пагинацию
+    if (totalPages > 1) {
+      renderUniversalPagination(paginationContainer, page, totalPages, (newPage) => {
+        loadUserArtistFavorites(newPage, pageSize);
+      });
+    }
+
   } catch (err) {
     console.error('Ошибка загрузки избранных артистов:', err);
-    showNotification('Не удалось загрузить избранных артистов', 'error');
+    if (favoritesContainer) {
+      favoritesContainer.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #ff6b6b;">
+          <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
+          <h3 style="color: #fff; margin-bottom: 10px;">Ошибка загрузки</h3>
+          <p>Не удалось загрузить избранных артистов</p>
+        </div>
+      `;
+    }
+  } finally {
+    if (loadingContainer) loadingContainer.style.display = 'none';
   }
 }
 
@@ -1165,7 +1468,7 @@ function renderArtistFavorites(favorites) {
       <div class="artist-avatar-container">
         <img src="${avatarUrl}" class="artist-avatar" alt="${artist.name}" onerror="this.src='images/default-avatar.png'">
         <button class="pin-btn ${artist.is_pinned ? 'pinned' : ''}" title="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" data-artist-id="${artist.id}">
-          <img src="images/heart-color.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/pin_btn.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="artist-info">
@@ -1233,13 +1536,15 @@ async function toggleArtistFavoritePinFromFullPage(artistId, pinButton) {
 // Вспомогательная функция для создания кликабельных ссылок артистов
 function createArtistLinks(artistNames, artistIds, container) {
   try {
-  if (!artistNames || !artistIds) {
+  if (!artistNames) {
     container.textContent = 'Исполнитель не указан';
     return;
   }
   
   const names = artistNames.split(', ');
-  const ids = artistIds;
+  const ids = Array.isArray(artistIds)
+    ? artistIds
+    : (typeof artistIds === 'string' && artistIds.length > 0 ? artistIds.split(',') : []);
   
   // Очищаем контейнер и добавляем класс для стилизации
   container.innerHTML = '';
@@ -1247,17 +1552,31 @@ function createArtistLinks(artistNames, artistIds, container) {
   container.classList.add('artist-container');
   
   names.forEach((name, index) => {
-    const artistId = ids[index] ? ids[index].trim() : null;
+    const rawId = ids[index] !== undefined ? ids[index] : null;
+    const artistId = rawId !== null && rawId !== undefined ? String(rawId).trim() : null;
     
     const artistLink = document.createElement('span');
     artistLink.className = 'artist-link';
     artistLink.textContent = name.trim();
+    artistLink.style.cursor = 'pointer';
+    artistLink.style.color = '#4a9eff';
+    artistLink.title = 'Перейти к странице артиста';
     
     if (artistId) {
       artistLink.setAttribute('data-artist-id', artistId);
     } else {
       artistLink.setAttribute('data-artist-name', name.trim());
     }
+    
+    // Добавляем обработчик клика
+    artistLink.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (artistId) {
+        handleArtistClick(Number(artistId), name.trim());
+      } else {
+        handleArtistClick(null, name.trim());
+      }
+    });
     
     container.appendChild(artistLink);
     
@@ -1375,13 +1694,23 @@ document.getElementById('submitRatingBtn').addEventListener('click', async funct
         showReleasePage();
       } else {
         // Иначе переходим на главную страницу
-      document.getElementById('mainPageContent').style.display = 'block';
+      // Используем централизованную навигацию
+      showMainPage();
+      // Прячем страницу оценки, очищаем поиск и показываем ленту
       document.getElementById('rateReleasePage').style.display = 'none';
-      document.getElementById('releaseSearchInput').value = '';
-      document.querySelector('.releases-scroll-container').style.display = 'block';
-      if (cachedReleases) {
-        renderReleases(cachedReleases);
-        }
+      const searchInput = document.getElementById('releaseSearchInput');
+      if (searchInput) searchInput.value = '';
+      const scrollContainer = document.querySelector('.releases-scroll-container');
+      if (scrollContainer) scrollContainer.style.display = 'block';
+
+      // Перерисовываем разделы главной: "Недавно добавленные" и "Топ рейтинга"
+      if (cachedReleases && cachedReleases.length > 0) {
+        renderRecentReleases();
+        renderFilteredRating();
+      } else {
+        // Если кэш пуст, перезагружаем релизы (отрисовка произойдет внутри)
+        loadReleases(true);
+      }
       }
     } else {
       showNotification('Ошибка при сохранении', 'error');
@@ -1437,15 +1766,8 @@ async function showArtistPage(artistData, releases) {
     // Скрываем загрузку и показываем контент
     hideArtistPageLoading();
     
-    // Скрываем все возможные страницы
-    document.getElementById('mainPageContent').style.display = 'none';
-    document.getElementById('searchContainer').style.display = 'none';
-    document.getElementById('favoritesContainer').style.display = 'none';
-    document.getElementById('releasePage').style.display = 'none';
-    document.getElementById('artistPage').style.display = 'block';
-    
-    // Снимаем активные классы с кнопок
-    document.querySelectorAll('.icon-btn[data-page]').forEach(b => b.classList.remove('active'));
+    // Используем централизованную навигацию
+    showPage('artistPage');
     
     // Рендерим данные артиста
     await renderArtistPage(artistData, releases);
@@ -2691,7 +3013,7 @@ async function submitPost(event) {
         }
     } catch (error) {
         console.error('Error creating post:', error);
-        showNotification('Ошибка при создании поста: ' + error.message, 'error');
+        showNotification('Ошибка при создании поста', 'error');
     }
 }
 
@@ -2758,8 +3080,51 @@ function initializeSettingsPage(user) {
         bannerPreview.style.backgroundImage = '';
     }
     
+    // Инициализируем состояние 2FA UI
+    const twoFAEnabled = !!user.isTwoFAEnabled;
+    const twoFAActions = document.getElementById('twoFAActions');
+    const twoFASetup = document.getElementById('twoFASetup');
+    if (twoFAActions && twoFASetup) {
+        if (twoFAEnabled) {
+            twoFASetup.style.display = 'none';
+            twoFAActions.style.display = 'block';
+            // Скрываем кнопку включения и показываем отвязку через email-код
+            const startBtn = document.getElementById('start2FASetupBtn');
+            if (startBtn) startBtn.style.display = 'none';
+            // Переиспользуем блок отключения: теперь через email
+            const disableContainer = document.createElement('div');
+            disableContainer.className = 'input-group';
+            disableContainer.style.marginTop = '10px';
+            disableContainer.innerHTML = `
+                <button class="settings-btn secondary" id="sendDisable2FACodeBtn">Отправить код на почту</button>
+                <input type="text" id="disable2FAEmailCodeInput" class="settings-input" placeholder="Код из письма">
+                <button class="settings-btn danger" id="confirmDisable2FABtn">Отвязать 2FA</button>
+            `;
+            twoFAActions.appendChild(disableContainer);
+        } else {
+            // 2FA выключено — показываем кнопку включения
+            const startBtn = document.getElementById('start2FASetupBtn');
+            if (startBtn) startBtn.style.display = 'inline-flex';
+            // Убираем возможные элементы отвязки
+            document.getElementById('sendDisable2FACodeBtn')?.parentElement?.remove();
+        }
+    }
+
     // Добавляем обработчики событий
     setupSettingsEventHandlers();
+
+    // Вкладки настроек
+    const tabButtons = Array.from(document.querySelectorAll('.settings-tab'));
+    const tabSections = Array.from(document.querySelectorAll('[data-tab-content]'));
+    function activateTab(name) {
+        tabButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === name));
+        tabSections.forEach(sec => sec.classList.toggle('active', sec.getAttribute('data-tab-content') === name));
+    }
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => activateTab(btn.dataset.tab));
+    });
+    // По умолчанию активируем appearance
+    activateTab('appearance');
 }
 
 // Настройка обработчиков событий для страницы настроек
@@ -2911,6 +3276,167 @@ function setupSettingsEventHandlers() {
     document.getElementById('settingsTelegramSave')?.addEventListener('click', () => {
         showNotification('Функция Telegram будет добавлена позже', 'info');
     });
+
+    // ===== Security: Change Email =====
+    document.getElementById('sendEmailChangeCodeBtn')?.addEventListener('click', async () => {
+        const email = document.getElementById('securityNewEmail').value.trim();
+        if (!email) { showNotification('Введите новый email', 'error'); return; }
+        try {
+            await window.electronAPI.sendConfirmationCode(email);
+            showNotification('Код отправлен на новый email');
+        } catch (e) {
+            showNotification('Не удалось отправить код', 'error');
+        }
+    });
+
+    document.getElementById('applyEmailChangeBtn')?.addEventListener('click', async () => {
+        const email = document.getElementById('securityNewEmail').value.trim();
+        const code = document.getElementById('securityEmailCode').value.trim();
+        if (!email || !code) { showNotification('Укажите email и код', 'error'); return; }
+        try {
+            await window.electronAPI.changeEmail({ newEmail: email, code });
+            showNotification('Email изменён');
+        } catch (e) {
+            showNotification('Не удалось изменить email', 'error');
+        }
+    });
+
+    // Добавляем обработчик paste для поля кода смены email
+    document.getElementById('securityEmailCode')?.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanCode = pastedText.replace(/\D/g, '');
+        if (cleanCode.length >= 6) {
+            document.getElementById('securityEmailCode').value = cleanCode.substring(0, 6);
+        }
+    });
+
+    // ===== Security: Change Password =====
+    document.getElementById('applyPasswordChangeBtn')?.addEventListener('click', async () => {
+        const currentPassword = document.getElementById('securityCurrentPassword').value;
+        const newPassword = document.getElementById('securityNewPassword').value;
+        if (!currentPassword || !newPassword) { showNotification('Заполните оба поля пароля', 'error'); return; }
+        try {
+            await window.electronAPI.changePassword({ currentPassword, newPassword });
+            showNotification('Пароль изменён');
+            document.getElementById('securityCurrentPassword').value = '';
+            document.getElementById('securityNewPassword').value = '';
+        } catch (e) {
+            showNotification('Не удалось изменить пароль', 'error');
+        }
+    });
+
+    // ===== Security: Login History =====
+    async function loadLoginHistory() {
+        try {
+            const history = await window.electronAPI.getLoginHistory();
+            const container = document.getElementById('loginHistoryList');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!history || history.length === 0) {
+                container.innerHTML = '<div class="empty-state">Пока нет записей</div>';
+                return;
+            }
+            history.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'login-history-row';
+                const date = item.created_at ? new Date(item.created_at).toLocaleString('ru-RU') : '-';
+                row.innerHTML = `<span class="os">${item.os_info || '-'}</span><span class="ip">${item.ip_address || '-'}</span><span class="date">${date}</span>`;
+                container.appendChild(row);
+            });
+        } catch (e) {
+            showNotification('Не удалось загрузить историю входов', 'error');
+        }
+    }
+    document.getElementById('refreshLoginHistoryBtn')?.addEventListener('click', loadLoginHistory);
+    loadLoginHistory();
+
+    // ===== Security: 2FA =====
+    const twoFAActions = document.getElementById('twoFAActions');
+    const twoFASetup = document.getElementById('twoFASetup');
+    const twoFASecretInput = document.getElementById('twoFASecret');
+
+    document.getElementById('start2FASetupBtn')?.addEventListener('click', async () => {
+        try {
+            const { success, secret, otpauth } = await window.electronAPI.init2FASetup();
+            if (!success) throw new Error('Не удалось инициировать 2FA');
+            twoFASecretInput.value = secret;
+            twoFAActions.style.display = 'none';
+            twoFASetup.style.display = 'block';
+            // Рендер QR (с внешним сервисом и fallback)
+            const qr = document.getElementById('twoFAQrImg');
+            if (qr && otpauth) {
+                const enc = encodeURIComponent(otpauth);
+                qr.onerror = () => {
+                    // fallback на другой сервис
+                    qr.onerror = null;
+                    qr.src = `https://quickchart.io/qr?size=180&text=${enc}`;
+                };
+                qr.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${enc}`;
+            }
+        } catch (e) {
+            showNotification('Ошибка при инициации 2FA', 'error');
+        }
+    });
+
+    document.getElementById('copy2FASecretBtn')?.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(twoFASecretInput.value || '');
+            showNotification('Секрет скопирован');
+        } catch (_) { showNotification('Не удалось скопировать', 'error'); }
+    });
+
+    document.getElementById('confirm2FASetupBtn')?.addEventListener('click', async () => {
+        const code = document.getElementById('twoFACodeInput').value.trim();
+        if (!code) { showNotification('Введите код', 'error'); return; }
+        try {
+            await window.electronAPI.enable2FA({ code });
+            showNotification('2FA включено');
+            twoFASetup.style.display = 'none';
+            twoFAActions.style.display = 'block';
+        } catch (e) {
+            // Показываем только общее сообщение
+            showNotification('Неверный код 2FA', 'error');
+        }
+    });
+
+    // Добавляем обработчик paste для поля 2FA кода в настройках
+    document.getElementById('twoFACodeInput')?.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanCode = pastedText.replace(/\D/g, '');
+        if (cleanCode.length >= 6) {
+            document.getElementById('twoFACodeInput').value = cleanCode.substring(0, 6);
+        }
+    });
+
+    // Удалено: отключение 2FA по TOTP-коду (оставляем только отвязку по email-коду)
+
+    // Отправка кода на почту для отвязки 2FA
+    document.getElementById('sendDisable2FACodeBtn')?.addEventListener('click', async () => {
+        try {
+            await window.electronAPI.initDisable2FA();
+            showNotification('Код для отвязки 2FA отправлен на почту');
+        } catch (e) {
+            showNotification('Не удалось отправить код', 'error');
+        }
+    });
+
+    // Подтверждение отвязки 2FA кодом из письма
+    document.getElementById('confirmDisable2FABtn')?.addEventListener('click', async () => {
+        const code = document.getElementById('disable2FAEmailCodeInput')?.value.trim();
+        if (!code) { showNotification('Введите код из письма', 'error'); return; }
+        try {
+            await window.electronAPI.confirmDisable2FA({ code });
+            showNotification('2FA отвязана');
+            // Обновляем UI: убираем элементы отвязки, показываем кнопку включения 2FA
+            document.getElementById('sendDisable2FACodeBtn')?.parentElement?.remove();
+            const startBtn = document.getElementById('start2FASetupBtn');
+            if (startBtn) startBtn.style.display = 'inline-flex';
+        } catch (e) {
+            showNotification('Не удалось отвязать 2FA', 'error');
+        }
+    });
 }
 
 // Настройка обработчиков событий для страницы обновлений
@@ -3007,24 +3533,8 @@ async function handleReleaseClick(releaseId) {
 
 // Обновите функцию showReleasePage
 function showReleasePage() {
-    // Скрываем все элементы главной страницы
-    const mainPageContent = document.getElementById('mainPageContent');
-    const searchContainer = document.getElementById('searchContainer');
-    const favoritesContainer = document.getElementById('favoritesContainer');
-    const releasePage = document.getElementById('releasePage');
-    const allReleasePage = document.getElementById('allReleasesPage');
-
-    // Проверяем существование элементов перед их изменением
-    if (mainPageContent) mainPageContent.style.display = 'none';
-    if (searchContainer) searchContainer.style.display = 'none';
-    if (favoritesContainer) favoritesContainer.style.display = 'none';
-    if (allReleasePage) allReleasePage.style.display = 'none';
-
-    // Снимаем активные классы с кнопок
-    document.querySelectorAll('.icon-btn[data-page]').forEach(b => b.classList.remove('active'));
-
-    // Показываем страницу релиза
-    if (releasePage) releasePage.style.display = 'block';
+    // Используем централизованную навигацию
+    showPage('releasePage');
 }
 
 function hideReleasePage() {
@@ -3068,7 +3578,7 @@ function renderReleasePage(release) {
 
   // Установка остальных данных
   if (artistElement) {
-    if (release.artist_names && release.artist_ids) {
+    if (release.artist_names) {
       createArtistLinks(release.artist_names, release.artist_ids, artistElement);
     } else {
       // Fallback для старого формата
@@ -3379,13 +3889,25 @@ async function showAllReleasesPage() {
   try {
     isLoadingReleases = true;
     
-  document.getElementById('mainPageContent').style.display = 'none';
-  document.getElementById('releasePage').style.display = 'none';
-  document.getElementById('artistPage').style.display = 'none';
-  document.getElementById('favoritesContainer').style.display = 'none';
-  document.getElementById('rateReleasePage').style.display = 'none';
-  document.getElementById('profile-page').style.display = 'none';
-  document.getElementById('allReleasesPage').style.display = 'block';
+  // Используем централизованную навигацию
+  showPage('allReleasesPage');
+
+  // Заполняем список лет динамически
+  try {
+    const years = await window.electronAPI.getReleaseYears();
+    const yearSelect = document.getElementById('filterYear');
+    if (yearSelect && Array.isArray(years)) {
+      const current = yearSelect.value;
+      yearSelect.innerHTML = '<option value="">Год</option>' +
+        years.map(y => `<option value="${y}">${y}</option>`).join('');
+      // Сохраняем выбранный, если есть
+      if (current && Array.from(yearSelect.options).some(o => o.value === current)) {
+        yearSelect.value = current;
+      }
+    }
+  } catch (e) {
+    console.warn('Не удалось загрузить годы релизов:', e);
+  }
 
     // Показываем индикатор загрузки
     const loadingElement = document.getElementById('allReleasesLoading');
@@ -3402,12 +3924,10 @@ async function showAllReleasesPage() {
     console.log('Проверяем доступность electronAPI:', !!window.electronAPI);
     console.log('Проверяем доступность getAllReleases:', !!window.electronAPI?.getAllReleases);
     
-    console.log('Вызываем window.electronAPI.getAllReleases()...');
-    const allReleases = await window.electronAPI.getAllReleases();
-    console.log('Получено релизов:', allReleases.length);
-    
-    window.allReleasesCache = allReleases; // сохраним для фильтрации
-    applyFilters();
+    // Первичная страница загружается постранично
+    const firstPage = 1;
+    currentPage = firstPage;
+    await loadReleasesPage(firstPage, window.currentFilters);
     
     // Скрываем индикатор загрузки
     if (loadingElement) loadingElement.style.display = 'none';
@@ -3440,37 +3960,24 @@ function applyFilters() {
 
 function loadFilteredReleasesPage(page = 1) {
   try {
-    if (!window.allReleasesCache) {
-      console.warn('Кэш релизов пуст');
-      return;
-    }
-
     const yearVal = document.getElementById('filterYear')?.value;
     const monthVal = document.getElementById('filterMonth')?.value;
     const typeVal = document.getElementById('filterType')?.value;
     const ratingMinInput = document.getElementById('filterRatingMin');
     const ratingMaxInput = document.getElementById('filterRatingMax');
-    const ratingMinRange = document.getElementById('ratingMinRange');
-    const ratingMaxRange = document.getElementById('ratingMaxRange');
-    const ratingProgress = document.getElementById('ratingRangeProgress');
-
     const ratingMinVal = ratingMinInput?.value ?? '';
     const ratingMaxVal = ratingMaxInput?.value ?? '';
 
-  let filtered = [...window.allReleasesCache];
-    if (yearVal !== "") filtered = filtered.filter(r => new Date(r.add_date).getFullYear() === Number(yearVal));
-  if (monthVal !== "") filtered = filtered.filter(r => new Date(r.add_date).getMonth() === Number(monthVal));
-  if (typeVal) filtered = filtered.filter(r => r.type === typeVal);
-    if (ratingMinVal !== "") filtered = filtered.filter(r => (Number(r.host_rating) || 0) >= Number(ratingMinVal));
-    if (ratingMaxVal !== "") filtered = filtered.filter(r => (Number(r.host_rating) || 0) <= Number(ratingMaxVal));
+    // Собираем фильтры и грузим данные постранично
+    window.currentFilters = {
+      year: yearVal ? Number(yearVal) : undefined,
+      month: monthVal !== '' ? Number(monthVal) : undefined,
+      type: typeVal || undefined,
+      ratingMin: ratingMinVal !== '' ? Number(ratingMinVal) : undefined,
+      ratingMax: ratingMaxVal !== '' ? Number(ratingMaxVal) : undefined
+    };
 
-  const pageSize = 10;
-  totalPages = Math.ceil(filtered.length / pageSize);
-  currentPage = page;
-  const pageData = filtered.slice((page - 1) * pageSize, page * pageSize);
-
-  renderReleasesList(pageData, 'allReleasesContainer');
-  renderPagination(totalPages, currentPage);
+    loadReleasesPage(page, window.currentFilters);
   } catch (error) {
     console.error('Ошибка в loadFilteredReleasesPage:', error);
     const container = document.getElementById('allReleasesContainer');
@@ -3511,7 +4018,7 @@ function renderRecentReleases(limit = 10) {
   renderReleases(recent, 'releasesContainer');
 }
 
-function renderPagination(totalPages, currentPage) {
+function renderPagination(totalPagesParam, currentPageParam) {
   try {
   const container = document.getElementById('paginationContainer');
     if (!container) {
@@ -3521,34 +4028,41 @@ function renderPagination(totalPages, currentPage) {
     
   container.innerHTML = '';
 
+  const total = typeof totalPagesParam === 'number' ? totalPagesParam : totalPages;
+  const current = typeof currentPageParam === 'number' ? currentPageParam : currentPage;
+
+  if (!total || total <= 1) {
+    return;
+  }
+
   // Кнопка "Назад"
-  if (currentPage > 1) {
+  if (current > 1) {
     const prevBtn = document.createElement('button');
     prevBtn.textContent = '← Назад';
-    prevBtn.onclick = () => loadFilteredReleasesPage(currentPage - 1);
+    prevBtn.onclick = () => loadReleasesPage(current - 1, window.currentFilters);
     container.appendChild(prevBtn);
   }
 
   // Номера страниц
-  for (let i = 1; i <= totalPages; i++) {
-    if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 2) {
+  for (let i = 1; i <= total; i++) {
+    if (i === 1 || i === total || Math.abs(i - current) <= 2) {
       const btn = document.createElement('button');
       btn.textContent = i;
-      btn.disabled = i === currentPage;
-      btn.onclick = () => loadFilteredReleasesPage(i);
+      btn.disabled = i === current;
+      btn.onclick = () => loadReleasesPage(i, window.currentFilters);
       container.appendChild(btn);
-    } else if (i === 2 && currentPage > 4) {
+    } else if (i === 2 && current > 4) {
       container.appendChild(document.createTextNode('…'));
-    } else if (i === totalPages - 1 && currentPage < totalPages - 3) {
+    } else if (i === total - 1 && current < total - 3) {
       container.appendChild(document.createTextNode('…'));
     }
   }
 
   // Кнопка "Вперёд"
-  if (currentPage < totalPages) {
+  if (current < total) {
     const nextBtn = document.createElement('button');
     nextBtn.textContent = 'Вперёд →';
-    nextBtn.onclick = () => loadFilteredReleasesPage(currentPage + 1);
+    nextBtn.onclick = () => loadReleasesPage(current + 1, window.currentFilters);
     container.appendChild(nextBtn);
     }
   } catch (error) {
@@ -3604,7 +4118,7 @@ function renderReleasesList(releases, containerId) {
 
     // Создаем кликабельные ссылки артистов
     const artistContainer = card.querySelector('.rating-artist');
-    if (release.artist_names && release.artist_ids) {
+    if (release.artist_names) {
       createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
     } else {
       artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
@@ -3636,19 +4150,21 @@ function renderReleasesList(releases, containerId) {
 
 // Обработчик успешной регистрации
 async function handleSuccessfulRegistration() {
+  // Закрываем модальные окна регистрации
+  document.getElementById('emailConfirmationModal').classList.remove('show');
+  document.getElementById('registrationModal').classList.remove('show');
+  
   // Показываем анимацию успеха
   const successModal = document.getElementById('successModal');
   successModal.classList.add('show');
   
-  // Ждём завершения анимации (3 секунды)
-  await new Promise(resolve => setTimeout(resolve, 3000));
+  // Ждём завершения анимации (4 секунды для новой анимации)
+  await new Promise(resolve => setTimeout(resolve, 4000));
   
-  // Закрываем все модальные окна
-  document.getElementById('successModal').classList.remove('show');
-  document.getElementById('emailConfirmationModal').classList.remove('show');
-  document.getElementById('registrationModal').classList.remove('show');
+  // Закрываем анимацию успеха
+  successModal.classList.remove('show');
   
-  // Показываем окно входа`
+  // Показываем окно входа
   document.getElementById('loginModal').classList.add('show');
 }
 
@@ -3661,17 +4177,90 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             email: document.getElementById('loginEmail').value,
             password: document.getElementById('loginPassword').value
         });
-        
+
+        if (result.success && result.requires2fa) {
+            // Открываем модальное окно 2FA
+            const twoFALoginModal = document.getElementById('twoFALoginModal');
+            const twoFALoginForm = document.getElementById('twoFALoginForm');
+            const twoFALoginCode = document.getElementById('twoFALoginCode');
+            const pendingId = result.pendingId;
+
+            if (twoFALoginModal && twoFALoginForm && twoFALoginCode) {
+                twoFALoginCode.value = '';
+                twoFALoginModal.classList.add('show');
+                setTimeout(() => twoFALoginCode.focus(), 50);
+                
+                // Добавляем обработчик paste для 2FA кода
+                const pasteHandler = (e) => {
+                    e.preventDefault();
+                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                    const cleanCode = pastedText.replace(/\D/g, '');
+                    if (cleanCode.length >= 6) {
+                        twoFALoginCode.value = cleanCode.substring(0, 6);
+                    }
+                };
+                
+                twoFALoginCode.addEventListener('paste', pasteHandler);
+
+                const submitHandler = async (ev) => {
+                    ev.preventDefault();
+                    const code = twoFALoginCode.value.trim();
+                    if (!code) { showNotification('Введите код 2FA', 'error'); return; }
+                    try {
+                        const result = await window.electronAPI.verify2FALogin({ pendingId, code });
+                        if (result && result.success) {
+                            // Удаляем обработчик при успешном входе
+                            twoFALoginForm.removeEventListener('submit', submitHandler);
+                            twoFALoginModal.classList.remove('show');
+                            document.getElementById('loginModal').classList.remove('show');
+                            updateUIAfterLogin(result.user);
+                            document.getElementById('loginForm').reset();
+                        } else if (result && result.error) {
+                            // Очищаем поле при ошибке
+                            twoFALoginCode.value = '';
+                            twoFALoginCode.focus();
+                            
+                            // Показываем сообщение об ошибке
+                            showNotification(result.error, 'error');
+                            
+                            // Если это блокировка, закрываем модальное окно
+                            if (result.blocked) {
+                                // Удаляем обработчик при блокировке
+                                twoFALoginForm.removeEventListener('submit', submitHandler);
+                                setTimeout(() => {
+                                    twoFALoginModal.classList.remove('show');
+                                    document.getElementById('loginModal').classList.remove('show');
+                                }, 3000);
+                            }
+                        }
+                    } catch (e) {
+                        // Очищаем поле при ошибке
+                        twoFALoginCode.value = '';
+                        twoFALoginCode.focus();
+                        
+                        // Показываем общее сообщение об ошибке
+                        showNotification('Произошла ошибка при проверке кода', 'error');
+                    }
+                };
+
+                // Навешиваем обработчик для повторных попыток
+                twoFALoginForm.addEventListener('submit', submitHandler);
+                document.getElementById('twoFALoginClose')?.addEventListener('click', () => {
+                    twoFALoginModal.classList.remove('show');
+                    // Удаляем обработчик при закрытии модального окна
+                    twoFALoginForm.removeEventListener('submit', submitHandler);
+                }, { once: true });
+            }
+            return;
+        }
+
         if (result.success) {
-            // Сохраняем токен через новый метод
-            await window.electronAPI.saveToken(result.token);
-            
             document.getElementById('loginModal').classList.remove('show');
             updateUIAfterLogin(result.user);
             document.getElementById('loginForm').reset();
         }
     } catch (err) {
-        showNotification(err.message, 'error');
+        showNotification('Ошибка при входе в систему', 'error');
     }
 });
 
@@ -3702,35 +4291,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Обновим обработчик подтверждения регистрации
-document.getElementById('confirmationForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  
-  const enteredCode = Array.from(document.querySelectorAll('.code-input'))
-    .map(input => input.value)
-    .join('');
-  
-  try {
-    // Проверяем код
-    await window.electronAPI.verifyConfirmationCode({
-      email: registrationData.email,
-      code: enteredCode
-    });
-    
-    // Регистрируем пользователя
-    const result = await window.electronAPI.registerUser(registrationData);
-    
-    // Показываем анимацию успеха
-    await handleSuccessfulRegistration();
-    
-    // Очищаем форму
-    document.getElementById('registrationForm').reset();
-    
-  } catch (error) {
-    console.error('Ошибка подтверждения:', error);
-    showError('confirmation', error.message);
-  }
-});
 
 function renderRatingReleases(releases) { 
     const tracksContainer = document.getElementById('ratingTracks');
@@ -3953,26 +4513,10 @@ function renderArtistReleases(releases, containerId) {
         
         // Создаем кликабельные ссылки артистов
         const artistContainer = card.querySelector('.rating-artist');
-        if (release.artist_names && release.artist_ids) {
-            const artistNames = release.artist_names.split(', ');
-            const artistIds = release.artist_ids.split(', ');
-            
-            artistNames.forEach((name, index) => {
-                if (index > 0) artistContainer.appendChild(document.createTextNode(', '));
-                const artistLink = document.createElement('span');
-                artistLink.textContent = name.trim();
-                artistLink.className = 'artist-link';
-                artistLink.style.cursor = 'pointer';
-                artistLink.style.color = '#4a9eff';
-                artistLink.title = 'Перейти к странице артиста';
-                artistLink.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    handleArtistClick(artistIds[index], name.trim());
-                });
-                artistContainer.appendChild(artistLink);
-            });
+        if (release.artist_names) {
+            createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
         } else {
-            artistContainer.textContent = release.artist_names || release.artist_name || 'Исполнитель не указан';
+            artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
         }
         
         // Добавляем обработчик клика для перехода к странице релиза
@@ -4033,7 +4577,7 @@ function renderReleases(releases, containerId = 'releasesContainer') {
         
         // Создаем кликабельные ссылки артистов
         const artistContainer = card.querySelector('.release-artists');
-        if (release.artist_names && release.artist_ids) {
+        if (release.artist_names) {
           createArtistLinks(release.artist_names, release.artist_ids, artistContainer);
         } else {
           artistContainer.textContent = release.artist_name || 'Исполнитель не указан';
@@ -4096,6 +4640,18 @@ function renderFilteredRating() {
   renderRatingReleases(filtered);
 }
 
+// Загрузка рейтинга за месяц с бэкенда (точные данные, если локального кэша недостаточно)
+async function loadMonthlyRating(month, year) {
+  try {
+    const releases = await window.electronAPI.getRatingReleasesForMonth(month, year);
+    renderRatingReleases(releases || []);
+  } catch (err) {
+    console.error('Ошибка загрузки рейтинга за месяц:', err);
+    // Фолбэк — использовать фильтр из локального кэша
+    renderFilteredRating();
+  }
+}
+
 async function loadReleases(forceReload = false) {
     const loading = document.getElementById('loading');
     const error = document.getElementById('error');
@@ -4111,8 +4667,8 @@ async function loadReleases(forceReload = false) {
         loading.style.display = 'block';
         error.style.display = 'none';
         
-        console.log('Загрузка релизов...');
-        const releases = await window.electronAPI.getAllReleases();
+        console.log('Загрузка релизов (главная, быстрый список)...');
+        const releases = await window.electronAPI.getReleases();
         console.log('Получено релизов:', releases.length);
         
         // Обновляем кэш
@@ -4132,7 +4688,7 @@ async function loadReleases(forceReload = false) {
         
         // // Всегда рендерим из кэша
           renderRecentReleases();   // блок "Недавно добавленные" — не затрагивает рейтинг
-          renderFilteredRating();   // блок "Топ рейтинга" — использует ratingSelectedMonth
+          await loadMonthlyRating(ratingSelectedMonth, ratingSelectedYear);   // блок "Топ рейтинга"
         
     } catch (err) {
         console.error('Ошибка загрузки:', err);
@@ -4403,48 +4959,62 @@ async function checkAuthOnLoad() {
 
 
 // 4. Инициализация приложения
-// 4. Инициализация приложения
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('DOM загружен, инициализация приложения...');
+    
     // Элементы прелоадера
     const preloader = document.getElementById('preloader');
     const loadingText = document.getElementById('loadingText');
     const logo = document.querySelector('.preloader-logo');
 
+    console.log('Элементы прелоадера:', {
+        preloader: !!preloader,
+        loadingText: !!loadingText,
+        logo: !!logo
+    });
+
     // Проверка доступности Electron API
     if (!window.electronAPI) {
         console.error('Electron API не доступен!');
-        document.getElementById('error').textContent = 'Ошибка: Не удалось подключиться к приложению';
+        if (loadingText) {
+            loadingText.textContent = 'Ошибка: Не удалось подключиться к приложению';
+        }
         return;
     }
 
     // 1. Начинаем загрузку данных СРАЗУ
+    console.log('Запуск загрузки релизов...');
     const loadPromise = loadReleases(); // Запускаем загрузку, но не ждем завершения
 
     checkAuthOnLoad();
     
-    // 2. Показываем анимацию загрузки
-    let dotsInterval = setInterval(() => {
-        const dots = loadingText.textContent.match(/\./g) || [];
-        loadingText.textContent = 'Загрузка' + '.'.repeat((dots.length % 3) + 1);
-    }, 500);
+    // 2. Лёгкая анимация загрузки (без фиксированного ожидания)
+    console.log('Запуск анимации загрузки...');
 
     // 3. Ждем завершения загрузки
     try {
+        console.log('Ожидание завершения загрузки...');
         await loadPromise;
+        console.log('Загрузка завершена успешно!');
         
         // 4. Когда загрузка завершена, показываем успех
-        clearInterval(dotsInterval);
-        loadingText.classList.add('success');
-        loadingText.innerHTML = 'Успешно загружено <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-left: 8px;"><path d="M20 6L9 17L4 12" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        if (loadingText) {
+            loadingText.classList.add('success');
+            loadingText.innerHTML = 'Успешно загружено <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style="margin-left: 8px;"><path d="M20 6L9 17L4 12" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        }
         
         // 5. Ждем 1 секунду перед анимацией завершения
+        console.log('Ожидание перед завершением...');
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // 6. Запускаем анимацию завершения
-        loadingText.classList.add('hide');
-       // logo.classList.add('expand');
+        if (loadingText) {
+            loadingText.classList.add('hide');
+        }
+        // logo.classList.add('expand');
         
         // 7. Показываем основной интерфейс
+        console.log('Показ основного интерфейса...');
         document.body.classList.add('show');
         
         // 8. Убеждаемся, что локальный индикатор загрузки скрыт
@@ -4454,22 +5024,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             localLoading.style.visibility = 'hidden';
         }
         
-        // 9. Скрываем прелоадер
-        setTimeout(() => {
+        // 9. Скрываем прелоадер без дополнительных задержек
+        console.log('Скрытие прелоадера...');
+        if (preloader) {
             preloader.classList.add('hide');
             setTimeout(() => {
                 preloader.remove();
                 // Показываем главную страницу по умолчанию
+                console.log('Показ главной страницы...');
                 showMainPage();
             }, 800);
-        }, 800);
+        }
         
     } catch (error) {
         // Обработка ошибки загрузки
-        clearInterval(dotsInterval);
-        loadingText.classList.add('error');
-        loadingText.textContent = 'Ошибка загрузки';
         console.error('Ошибка загрузки:', error);
+        
+        
+        if (loadingText) {
+            loadingText.classList.add('error');
+            loadingText.textContent = 'Ошибка загрузки';
+        }
+        
+        // Показываем основной интерфейс даже при ошибке
+        console.log('Показ основного интерфейса при ошибке...');
+        document.body.classList.add('show');
+        
+        // Скрываем прелоадер
+        if (preloader) {
+            preloader.classList.add('hide');
+            setTimeout(() => {
+                preloader.remove();
+                showMainPage();
+            }, 800);
+        }
         return;
     }
 
@@ -4524,7 +5112,7 @@ function showReleasePreview(release) {
   
   // Обрабатываем артистов в превью
   const previewArtistElement = document.getElementById('previewArtist');
-  if (release.artist_names && release.artist_ids) {
+  if (release.artist_names) {
     createArtistLinks(release.artist_names, release.artist_ids, previewArtistElement);
   } else {
     // Fallback для старого формата
@@ -5120,12 +5708,21 @@ async function handleSuccessfulValidation(formData) {
 function setupCodeInputs() {
     const inputs = document.querySelectorAll('.code-input');
     
-    inputs.forEach((input, index) => {
+    // Удаляем старые обработчики, если они есть
+    inputs.forEach(input => {
+        const newInput = input.cloneNode(true);
+        input.parentNode.replaceChild(newInput, input);
+    });
+    
+    // Получаем обновленный список элементов после замены
+    const freshInputs = document.querySelectorAll('.code-input');
+    
+    freshInputs.forEach((input, index) => {
         // Обработчик ввода
         input.addEventListener('input', (e) => {
             if (e.target.value.length === 1) {
-                if (index < inputs.length - 1) {
-                    inputs[index + 1].focus();
+                if (index < freshInputs.length - 1) {
+                    freshInputs[index + 1].focus();
                 }
             }
         });
@@ -5134,8 +5731,39 @@ function setupCodeInputs() {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Backspace' && e.target.value.length === 0) {
                 if (index > 0) {
-                    inputs[index - 1].focus();
+                    freshInputs[index - 1].focus();
                 }
+            }
+        });
+        
+        // Обработчик вставки из буфера обмена
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            
+            // Получаем текст из буфера обмена
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+            
+            // Очищаем текст от пробелов и других символов, оставляем только цифры
+            const cleanCode = pastedText.replace(/\D/g, '');
+            
+            // Если код содержит 6 цифр, заполняем все поля
+            if (cleanCode.length === 6) {
+                freshInputs.forEach((inputField, inputIndex) => {
+                    inputField.value = cleanCode[inputIndex] || '';
+                });
+                
+                // Фокусируемся на последнем поле
+                freshInputs[freshInputs.length - 1].focus();
+            } else if (cleanCode.length > 0) {
+                // Если код короче 6 цифр, заполняем доступные поля
+                const codeArray = cleanCode.split('');
+                freshInputs.forEach((inputField, inputIndex) => {
+                    inputField.value = codeArray[inputIndex] || '';
+                });
+                
+                // Фокусируемся на следующем пустом поле или последнем заполненном
+                const nextEmptyIndex = codeArray.length < freshInputs.length ? codeArray.length : freshInputs.length - 1;
+                freshInputs[nextEmptyIndex].focus();
             }
         });
     });
@@ -5180,39 +5808,41 @@ async function resendConfirmationCode() {
   }
 }
 
-// Обработчик формы подтверждения
-document.getElementById('confirmationForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
+// Обработчик формы подтверждения (добавляем только один раз)
+const confirmationForm = document.getElementById('confirmationForm');
+if (confirmationForm && !confirmationForm.hasAttribute('data-listener-added')) {
+  confirmationForm.setAttribute('data-listener-added', 'true');
   
-  const enteredCode = Array.from(document.querySelectorAll('.code-input'))
-    .map(input => input.value)
-    .join('');
-  
-  try {
-    // Проверяем код
-    await window.electronAPI.verifyConfirmationCode({
-      email: registrationData.email,
-      code: enteredCode
-    });
+  confirmationForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
     
-    // Регистрируем пользователя
-    const result = await window.electronAPI.registerUser(registrationData);
+    const enteredCode = Array.from(document.querySelectorAll('.code-input'))
+      .map(input => input.value)
+      .join('');
     
-    // Закрываем модальные окна
-    document.getElementById('emailConfirmationModal').classList.remove('show');
-    document.getElementById('registrationModal').classList.remove('show');
-    
-    // Показываем уведомление об успехе
-    showSuccessNotification('Регистрация завершена успешно!');
-    
-    // Очищаем форму
-    document.getElementById('registrationForm').reset();
-    
-  } catch (error) {
-    console.error('Ошибка подтверждения:', error);
-    showError('confirmation', error.message);
-  }
-});
+    try {
+      // Проверяем код
+      await window.electronAPI.verifyConfirmationCode({
+        email: registrationData.email,
+        code: enteredCode
+      });
+      
+      // Регистрируем пользователя
+      const result = await window.electronAPI.registerUser(registrationData);
+      
+      // Показываем анимацию успеха
+      await handleSuccessfulRegistration();
+      
+      // Очищаем форму
+      document.getElementById('registrationForm').reset();
+      
+    } catch (error) {
+      console.error('Ошибка подтверждения:', error);
+      showError('confirmation', error.message);
+      showNotification('Неверный код подтверждения', 'error');
+    }
+  });
+}
 
 ////////////////////                                      ////////////////////
 ////////////////////                                      ////////////////////
@@ -5231,6 +5861,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('cancelAddRelease').addEventListener('click', () => {
     document.getElementById('addReleaseModal').classList.remove('show');
+  });
+
+  // Обработчики кнопок "Показать все"
+  document.getElementById('viewAllRatedReleasesBtn')?.addEventListener('click', () => {
+    showAllRatedReleases();
+  });
+
+  // Обработчики кнопок "Назад" для полных страниц
+  document.getElementById('favoritesBackBtn')?.addEventListener('click', () => {
+    showProfilePage();
+  });
+
+  document.getElementById('artistFavoritesBackBtn')?.addEventListener('click', () => {
+    showProfilePage();
+  });
+
+  document.getElementById('ratedReleasesBackBtn')?.addEventListener('click', () => {
+    showProfilePage();
   });
 
   // Загрузка изображения

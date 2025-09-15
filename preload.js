@@ -4,9 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   getReleases: () => ipcRenderer.invoke('get-releases'),
   getAllReleases: () => ipcRenderer.invoke('get-all-releases'),
+  getReleasesFast: () => ipcRenderer.invoke('get-releases-fast'),
   registerUser: (userData) => ipcRenderer.invoke('register-user', userData),
   saveToken: (token) => ipcRenderer.invoke('save-token', token),
-  getPagedReleases: (page, pageSize) => ipcRenderer.invoke('get-paged-releases', { page, pageSize }),
+  getPagedReleases: (page, pageSize, filters = {}) => ipcRenderer.invoke('get-paged-releases', { page, pageSize, filters }),
   updateUserAvatar: (data) => ipcRenderer.invoke('update-user-avatar', data),
   updateUserBanner: (data) => ipcRenderer.invoke('update-user-banner', data),
   updateUserName: (data) => ipcRenderer.invoke('update-user-name', data),
@@ -25,6 +26,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getReleaseUserRatings: (releaseId) => ipcRenderer.invoke('get-release-user-ratings', releaseId),
   getUserRatedReleases: (userId) => ipcRenderer.invoke('get-user-rated-releases', userId),
   logoutUser: () => ipcRenderer.invoke('logout-user'),
+  // Security & 2FA APIs
+  changePassword: (data) => ipcRenderer.invoke('change-password', data),
+  changeEmail: (data) => ipcRenderer.invoke('change-email', data),
+  getLoginHistory: () => ipcRenderer.invoke('get-login-history'),
+  init2FASetup: () => ipcRenderer.invoke('init-2fa-setup'),
+  enable2FA: (data) => ipcRenderer.invoke('enable-2fa', data),
+  // disable2FA removed from UI flow; unlink is done via email code below
+  initDisable2FA: () => ipcRenderer.invoke('init-disable-2fa'),
+  confirmDisable2FA: (data) => ipcRenderer.invoke('confirm-disable-2fa', data),
+  verify2FALogin: (data) => ipcRenderer.invoke('verify-2fa-login', data),
   sendConfirmationCode: (email) => ipcRenderer.invoke('send-confirmation-code', email),
   verifyConfirmationCode: (data) => ipcRenderer.invoke('verify-confirmation-code', data),
   getRatingReleasesForMonth: (month, year) => ipcRenderer.invoke('get-rating-releases', { month, year }),
@@ -45,5 +56,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleArtistFavoritePin: (userId, artistId) => ipcRenderer.invoke('toggle-artist-favorite-pin', { userId, artistId }),
   cacheArtistAvatar: (userId, artistId, avatarData) => ipcRenderer.invoke('cache-artist-avatar', { userId, artistId, avatarData }),
   getCachedArtistAvatar: (userId, artistId) => ipcRenderer.invoke('get-cached-artist-avatar', { userId, artistId }),
-  createRelease: (releaseData) => ipcRenderer.invoke('createRelease', releaseData)
+  createRelease: (releaseData) => ipcRenderer.invoke('createRelease', releaseData),
+  // Posts and Admin API
+  getPosts: () => ipcRenderer.invoke('get-posts'),
+  isAdmin: () => ipcRenderer.invoke('is-admin'),
+  createPost: (data) => ipcRenderer.invoke('create-post', data),
+  likePost: (postId) => ipcRenderer.invoke('like-post', postId),
+  unlikePost: (postId) => ipcRenderer.invoke('unlike-post', postId),
+  getPostLikes: (postId) => ipcRenderer.invoke('get-post-likes', postId),
+  isPostLiked: (postId) => ipcRenderer.invoke('is-post-liked', postId),
+  // User API
+  getUserById: (userId) => ipcRenderer.invoke('get-user-by-id', userId),
+  // Search API
+  unifiedSearch: (query) => ipcRenderer.invoke('unifiedSearch', query),
+  // Database API
+  testDatabaseConnection: () => ipcRenderer.invoke('test-database-connection'),
+  clearReleasesCache: () => ipcRenderer.invoke('clear-releases-cache'),
+  getCacheStatus: () => ipcRenderer.invoke('get-cache-status'),
+  getReleaseYears: () => ipcRenderer.invoke('get-release-years')
 });
