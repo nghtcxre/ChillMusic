@@ -264,6 +264,13 @@
 
                             <section class="card-section">
                                 <div class="card-header">
+                                    <h2>Оцененные релизы</h2>
+                                </div>
+                                <div id="userRatedReleases" class="releases-grid"></div>
+                            </section>
+
+                            <section class="card-section">
+                                <div class="card-header">
                                     <h2>Избранные релизы</h2>
                                 </div>
                                 <div id="userFavoritesGrid" class="favorites-grid"></div>
@@ -280,13 +287,6 @@
                                 <div id="userArtistFavoritesEmpty" class="empty-state" style="display: none;">
                                     <p>Пользователь пока не добавил артистов в избранное</p>
                                 </div>
-                            </section>
-
-                            <section class="card-section">
-                                <div class="card-header">
-                                    <h2>Оцененные релизы</h2>
-                                </div>
-                                <div id="userRatedReleases" class="releases-grid"></div>
                             </section>
                         </main>
                     </div>
@@ -755,34 +755,62 @@
 <div id="allReleasesPage" style="display: none;">
   <div class="header with-filters">
     <h1>Все релизы</h1>
-    <div class="filters">
-      <select id="filterYear">
-        <option value="">Год</option>
-        <option value="2024">2024</option>
-        <option value="2025">2025</option>
-      </select>
-      <select id="filterMonth">
-        <option value="">Месяц</option>
-        <option value="0">Январь</option>
-        <option value="1">Февраль</option>
-        <option value="2">Март</option>
-        <option value="3">Апрель</option>
-        <option value="4">Май</option>
-        <option value="5">Июнь</option>
-        <option value="6">Июль</option>
-        <option value="7">Август</option>
-        <option value="8">Сентябрь</option>
-        <option value="9">Октябрь</option>
-        <option value="10">Ноябрь</option>
-        <option value="11">Декабрь</option>
-      </select>
-      <select id="filterType">
-        <option value="">Все типы</option>
-        <option value="Альбом">Альбомы</option>
-        <option value="Сингл">Треки</option>
-      </select>
+    <button id="openFiltersBtn" class="filters-toggle-btn" style="visibility: hidden;" title="Фильтры">
+      Фильтры
+    </button>
+  </div>
+
+  <!-- Выдвижная панель фильтров и оверлей -->
+  <div id="filtersOverlay" class="filters-overlay" style="display:none;"></div>
+  <aside id="filtersDrawer" class="filters-drawer" aria-hidden="true">
+    <div class="filters-drawer-header">
+      <h3>Фильтры</h3>
+      <button id="closeFiltersBtn" class="filters-close-btn" title="Закрыть">×</button>
+    </div>
+    <div class="filters filters-drawer-content">
+      <div class="filter-group">
+        <div class="filter-label">Тип релиза</div>
+        <select id="filterType">
+          <option value="">Все типы</option>
+          <option value="Альбом">Альбомы</option>
+          <option value="Сингл">Треки</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Источник рейтинга</div>
+        <select id="filterRatingSource" title="Источник рейтинга">
+          <option value="user">Пользовательский</option>
+          <option value="host">Авторский</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Год</div>
+        <select id="filterYear">
+          <option value="">Год</option>
+          <option value="2024">2024</option>
+          <option value="2025">2025</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <div class="filter-label">Месяц</div>
+        <select id="filterMonth">
+          <option value="">Месяц</option>
+          <option value="0">Январь</option>
+          <option value="1">Февраль</option>
+          <option value="2">Март</option>
+          <option value="3">Апрель</option>
+          <option value="4">Май</option>
+          <option value="5">Июнь</option>
+          <option value="6">Июль</option>
+          <option value="7">Август</option>
+          <option value="8">Сентябрь</option>
+          <option value="9">Октябрь</option>
+          <option value="10">Ноябрь</option>
+          <option value="11">Декабрь</option>
+        </select>
+      </div>
       <div class="rating-range-filter" id="ratingRangeFilter">
-        <label class="rating-range-label">Рейтинг</label>
+        <label class="rating-range-label">Рейтинг (0–10)</label>
         <div class="range-slider">
           <div class="range-track"></div>
           <div class="range-progress" id="ratingRangeProgress"></div>
@@ -796,7 +824,11 @@
         </div>
       </div>
     </div>
-  </div>
+    <div class="filters-drawer-actions">
+      <button id="applyFiltersBtn" class="submit-btn">Применить</button>
+      <button id="resetFiltersBtn" class="settings-btn secondary">Сбросить</button>
+    </div>
+  </aside>
 
   <!-- Индикатор загрузки -->
   <div id="allReleasesLoading" class="loading-container" style="display: none;">
