@@ -658,6 +658,10 @@ ipcMain.handle('get-paged-releases', async (_event, { page = 1, pageSize = 20, f
     if (filters.year) { whereClauses.push('YEAR(r.add_date) = ?'); params.push(filters.year); }
     if (typeof filters.month === 'number') { whereClauses.push('MONTH(r.add_date) = ?'); params.push(filters.month + 1); }
     if (filters.type) { whereClauses.push('r.type = ?'); params.push(filters.type); }
+    // Диапазон рейтинга: выбираем столбец по источнику
+    const ratingCol = (filters.ratingSource === 'host') ? 'r.host_rating' : 'r.average_user_rating';
+    if (typeof filters.ratingMin === 'number') { whereClauses.push(`${ratingCol} >= ?`); params.push(filters.ratingMin); }
+    if (typeof filters.ratingMax === 'number') { whereClauses.push(`${ratingCol} <= ?`); params.push(filters.ratingMax); }
     const whereSql = whereClauses.length ? ('WHERE ' + whereClauses.join(' AND ')) : '';
 
     // всего записей для подсчёта страниц
@@ -820,7 +824,7 @@ ipcMain.handle('get-rating-releases', async (_event, { month, year }) => {
 });
 
 
-// Унифицированный поиск релизов и артистов
+// Унифицированный поиск релизов, артистов и пользователей
 ipcMain.handle('unifiedSearch', async (event, searchQuery) => {
   let connection;
   try {
@@ -862,6 +866,20 @@ ipcMain.handle('unifiedSearch', async (event, searchQuery) => {
       ORDER BY a.name ASC
       LIMIT 10
     `, [`%${searchQuery}%`]);
+
+    // Поиск пользователей (по display_name и email)
+    const [userRows] = await connection.query(`
+      SELECT 
+        id,
+        display_name,
+        email,
+        avatar,
+        'user' as result_type
+      FROM Users
+      WHERE display_name LIKE ? OR email LIKE ?
+      ORDER BY display_name ASC
+      LIMIT 10
+    `, [`%${searchQuery}%`, `%${searchQuery}%`]);
     
     // Объединяем результаты
     const releases = releaseRows.map(row => ({
@@ -920,10 +938,19 @@ ipcMain.handle('unifiedSearch', async (event, searchQuery) => {
       };
     }));
     
+    const users = userRows.map(row => ({
+      id: row.id,
+      displayName: row.display_name || row.email,
+      email: row.email,
+      result_type: 'user',
+      avatar: row.avatar ? new Uint8Array(row.avatar) : null
+    }));
+
     return {
       releases,
       artists,
-      total: releases.length + artists.length
+      users,
+      total: releases.length + artists.length + users.length
     };
     
   } catch (err) {
@@ -2004,7 +2031,7 @@ ipcMain.handle('toggle-artist-favorite-pin', async (event, { userId, artistId })
       );
       
       if (pinnedCount[0].count >= 5) {
-        return { success: false, message: 'Максимум 5 артистов можно закрепить' };
+        return { success: false, message: 'Можно закрепить максимум 5 артистов.' };
       }
     }
     

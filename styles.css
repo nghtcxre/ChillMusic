@@ -1,3 +1,13 @@
+/* removed top-progress */
+.header.with-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.header.with-filters h1 { margin: 0; }
+.header.with-filters .filters-toggle-btn { margin-left: auto; }
+
 /* ========================================
    CSS VARIABLES & BASE STYLES
    ======================================== */
@@ -5786,28 +5796,129 @@ textarea {
 /* Общий контейнер фильтров */
 .filters {
   display: flex;
-  gap: 15px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin: 20px 0;
+  margin: 16px 0 12px 0;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  background: #1b1b2a;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 10px 12px;
 }
 
-/* Общий стиль для input и select */
-.filters input[type="date"],
-.filters select {
-  padding: 10px 15px;
-  border-radius: 10px;
-  background-color: #4948b5;
-  color: white;
-  font-size: 14px;
-  transition: all 0.3s ease;
+/* Drawer and overlay for filters */
+.filters-toggle-btn {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent, #6c63ff);
+  color: #fff;
+  border: none;
   cursor: pointer;
 }
 
+.filters-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 90;
+}
+
+.filters-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 320px;
+  max-width: 88vw;
+  background: #121221;
+  border-left: 1px solid rgba(255,255,255,0.06);
+  box-shadow: -8px 0 24px rgba(0,0,0,0.35);
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+}
+
+.filters-drawer.open { transform: translateX(0); }
+
+.filters-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.filters-drawer-header h3 { margin: 0; font-size: 16px; }
+.filters-close-btn {
+  background: transparent;
+  color: #fff;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.filters-drawer-content {
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+}
+.filters-drawer-content .filter-group { display: flex; flex-direction: column; gap: 6px; }
+.filters-drawer-content .filter-label {
+  font-size: 12px;
+  color: rgba(255,255,255,0.75);
+  letter-spacing: .2px;
+}
+
+.filters-drawer-content select,
+.filters-drawer-content input[type="number"],
+.filters-drawer-content input[type="date"] {
+  width: 100%;
+}
+
+.filters-drawer-content .rating-range-filter {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.filters-drawer-content .range-slider { width: 100%; }
+.filters-drawer-content .range-values { justify-content: space-between; }
+
+@media (max-width: 480px) {
+  .filters-drawer { width: 90vw; }
+  .filters-drawer-content { grid-template-columns: 1fr; }
+}
+
+.filters-drawer-actions {
+  margin-top: auto;
+  padding: 12px 14px 16px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Общий стиль для input и select */
+.filters input[type="number"],
+.filters input[type="date"],
+.filters select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background-color: #2a2a3f;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: white;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
 /* Hover и focus эффект */
+.filters input[type="number"]:hover,
 .filters input[type="date"]:hover,
 .filters select:hover,
+.filters input[type="number"]:focus,
 .filters input[type="date"]:focus,
 .filters select:focus {
   border-color: #6c63ff;
@@ -5817,15 +5928,86 @@ textarea {
 
 /* Добавим градиент для кнопок селектов (если хотите выделить их) */
 .filters select {
-  background: #4948b5;
-  color: white;
+  background: #2a2a3f;
 }
+
+/* Rating range compact styling */
+.filters .rating-range-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.filters .rating-range-label {
+  font-size: 13px;
+  color: #ddd;
+  margin-right: 2px;
+}
+.filters .range-slider {
+  position: relative;
+  width: 180px;
+  height: 28px;
+}
+.filters .range-track {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 12px;
+  height: 4px;
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+}
+.filters .range-progress {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 12px;
+  height: 4px;
+  background: linear-gradient(90deg, #6c63ff, #50e3c2);
+  border-radius: 2px;
+}
+.filters .range-slider input[type="range"] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 100%;
+  background: none;
+  -webkit-appearance: none;
+}
+.filters .range-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid #6c63ff;
+  cursor: pointer;
+}
+.filters .range-slider input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  border: 2px solid #6c63ff;
+  cursor: pointer;
+}
+.filters .range-values {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.filters .range-values input[type="number"] {
+  width: 68px;
+}
+.filters .range-values .dash { opacity: 0.6; }
 
 /* Мобильная адаптация */
 @media (max-width: 600px) {
   .filters {
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+    padding: 10px;
   }
 }
 
@@ -6272,7 +6454,7 @@ textarea {
 }
 
 .view-all-btn {
-  background: linear-gradient(135deg, #7830B7, #9B59B6);
+  background: var(--accent-purple);
   border: none;
   color: white;
   padding: 8px 16px;
@@ -6284,7 +6466,7 @@ textarea {
 }
 
 .view-all-btn:hover {
-  background: linear-gradient(135deg, #9B59B6, #7830B7);
+  background: var(--accent-purple);
   transform: translateY(-1px);
 }
 
@@ -6608,7 +6790,7 @@ textarea {
 /* Кнопка "Посмотреть всё" */
 .view-all-btn {
   grid-column: 1 / -1;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--accent-purple);
   color: white;
   border: none;
   padding: 12px 24px;

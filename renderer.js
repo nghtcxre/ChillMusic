@@ -574,6 +574,19 @@ function renderProfileFavorites(favorites) {
   if (!favorites || favorites.length === 0) {
     grid.style.display = 'none';
     empty.style.display = 'block';
+    // Обновляем текст для чужого профиля
+    try {
+      const isOwn = !!window.isOwnProfileView;
+      const paragraphs = empty.querySelectorAll('p');
+      if (paragraphs && paragraphs[0]) {
+        paragraphs[0].textContent = isOwn
+          ? 'У вас пока нет избранных релизов'
+          : 'Пользователь пока не добавил релизы в избранное';
+      }
+      if (paragraphs && paragraphs[1]) {
+        paragraphs[1].style.display = isOwn ? '' : 'none';
+      }
+    } catch (_) {}
     return;
   }
   
@@ -587,6 +600,7 @@ function renderProfileFavorites(favorites) {
     
     const imageUrl = release.image ? bufferToImage(release.image) : null;
     
+    const isOwn = !!window.isOwnProfileView;
     card.innerHTML = `
       <div class="release-image-container">
         ${imageUrl ? 
@@ -594,9 +608,10 @@ function renderProfileFavorites(favorites) {
           `<div class="release-image"></div>`
         }
         <div class="release-rating">${renderRating(release.host_rating)}</div>
+        ${isOwn ? `
         <button class="pin-btn ${release.is_pinned ? 'pinned' : ''}" title="${release.is_pinned ? 'Открепить' : 'Закрепить'}" data-release-id="${release.id}">
-          <img src="images/pin_btn.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
-        </button>
+          <img src="images/premium/bookmark-color-premium.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+        </button>` : ''}
       </div>
       <div class="release-info">
         <h3 class="release-title" title="${release.title || 'Без названия'}">
@@ -622,12 +637,14 @@ function renderProfileFavorites(favorites) {
       }
     });
     
-    // Обработчик кнопки закрепления/открепления
+    // Обработчик кнопки закрепления/открепления (только в своём профиле)
     const pinBtn = card.querySelector('.pin-btn');
-    pinBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await toggleFavoritePinFromProfile(release.id, card, pinBtn);
-    });
+    if (pinBtn) {
+      pinBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await toggleFavoritePinFromProfile(release.id, card, pinBtn);
+      });
+    }
     
     grid.appendChild(card);
   });
@@ -775,7 +792,7 @@ function renderFavorites(favorites) {
           `<div class="rating-image" style="background-color: #1f1f1f;"></div>`
         }
         <button class="pin-btn ${release.is_pinned ? 'pinned' : ''}" title="${release.is_pinned ? 'Открепить' : 'Закрепить'}" data-release-id="${release.id}">
-          <img src="images/pin_btn.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/premium/bookmark-color-premium.png" alt="${release.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="rating-info">
@@ -1058,6 +1075,18 @@ function renderProfileArtistFavorites(favorites) {
   if (!favorites || favorites.length === 0) {
     grid.style.display = 'none';
     empty.style.display = 'block';
+    try {
+      const isOwn = !!window.isOwnProfileView;
+      const paragraphs = empty.querySelectorAll('p');
+      if (paragraphs && paragraphs[0]) {
+        paragraphs[0].textContent = isOwn
+          ? 'У вас пока нет избранных артистов'
+          : 'Пользователь пока не добавил артистов в избранное';
+      }
+      if (paragraphs && paragraphs[1]) {
+        paragraphs[1].style.display = isOwn ? '' : 'none';
+      }
+    } catch (_) {}
     return;
   }
   
@@ -1086,7 +1115,7 @@ function renderProfileArtistFavorites(favorites) {
       <div class="artist-avatar-container">
         <img src="${avatarUrl}" class="artist-avatar" alt="${artist.name}" onerror="this.src='images/default-avatar.png'">
         <button class="pin-btn ${artist.is_pinned ? 'pinned' : ''}" title="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" data-artist-id="${artist.id}">
-          <img src="images/pin_btn.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/premium/bookmark-color-premium.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="artist-info">
@@ -1468,7 +1497,7 @@ function renderArtistFavorites(favorites) {
       <div class="artist-avatar-container">
         <img src="${avatarUrl}" class="artist-avatar" alt="${artist.name}" onerror="this.src='images/default-avatar.png'">
         <button class="pin-btn ${artist.is_pinned ? 'pinned' : ''}" title="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" data-artist-id="${artist.id}">
-          <img src="images/pin_btn.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
+          <img src="images/premium/bookmark-color-premium.png" alt="${artist.is_pinned ? 'Открепить' : 'Закрепить'}" class="pin-icon">
         </button>
       </div>
       <div class="artist-info">
@@ -1559,7 +1588,6 @@ function createArtistLinks(artistNames, artistIds, container) {
     artistLink.className = 'artist-link';
     artistLink.textContent = name.trim();
     artistLink.style.cursor = 'pointer';
-    artistLink.style.color = '#4a9eff';
     artistLink.title = 'Перейти к странице артиста';
     
     if (artistId) {
@@ -2143,55 +2171,56 @@ function hideProfilePageLoading() {
     document.querySelector('.profile-content-wrapper').style.display = 'block';
 }
 
-// Показать страницу пользователя
+// Показать страницу пользователя (унифицированный шаблон собственного профиля)
 async function showUserProfilePage(userId) {
     try {
-        // Показываем загрузку
-        showUserProfilePageLoading();
-        
+        // Используем единую загрузку профиля
+        showProfilePageLoading();
+
         console.log('Loading user profile for ID:', userId);
-        
-        // Получаем данные пользователя
+
+        // Получаем данные пользователя и сопутствующие списки
         const userData = await window.electronAPI.getUserById(userId);
         if (!userData) {
+            hideProfilePageLoading();
             showNotification('Пользователь не найден', 'error');
-            hideUserProfilePageLoading();
             return;
         }
-        
-        console.log('User data loaded:', userData);
-        
-        // Получаем все данные пользователя параллельно
+
         const [ratedReleases, favorites, artistFavorites] = await Promise.all([
             window.electronAPI.getUserRatedReleases(userId),
             window.electronAPI.getUserFavorites(userId),
             window.electronAPI.getUserArtistFavorites(userId)
         ]);
-        
-        console.log('All user data loaded:', { ratedReleases, favorites, artistFavorites });
-        
-        // Скрываем загрузку и показываем контент
-        hideUserProfilePageLoading();
-        
-        // Скрываем все возможные страницы
-        document.getElementById('mainPageContent').style.display = 'none';
-        document.getElementById('searchContainer').style.display = 'none';
-        document.getElementById('favoritesContainer').style.display = 'none';
-        document.getElementById('releasePage').style.display = 'none';
-        document.getElementById('artistPage').style.display = 'none';
-        document.getElementById('profile-page').style.display = 'none';
-        document.getElementById('userProfilePage').style.display = 'block';
-    
-    // Снимаем активные классы с кнопок
-    document.querySelectorAll('.icon-btn[data-page]').forEach(b => b.classList.remove('active'));
 
-        // Рендерим данные пользователя
-        renderUserProfilePage(userData, ratedReleases, favorites, artistFavorites);
-        
+        // Устанавливаем контекст просматриваемого пользователя
+        const current = getCurrentUser();
+        window.viewedProfileUserId = userData.id;
+        window.isOwnProfileView = !!(current && current.id === userData.id);
+
+        // Переключаемся на страницу профиля
+        showPage('profile-page');
+        // Снимаем активные классы с кнопок
+        document.querySelectorAll('.icon-btn[data-page]').forEach(b => b.classList.remove('active'));
+
+        // Прячем владельческие кнопки при просмотре чужого профиля
+        const viewAllFavBtn = document.getElementById('viewAllFavoritesBtn');
+        const viewAllArtistFavBtn = document.getElementById('viewAllArtistFavoritesBtn');
+        if (viewAllFavBtn) viewAllFavBtn.style.display = window.isOwnProfileView ? '' : 'none';
+        if (viewAllArtistFavBtn) viewAllArtistFavBtn.style.display = window.isOwnProfileView ? '' : 'none';
+
+        // Рендер шапки и общих данных в шаблон собственного профиля
+        renderUnifiedProfileHeader(userData);
+        renderUnifiedProfileStatsAndAbout(userData, ratedReleases);
+        renderUnifiedRatedReleases(ratedReleases);
+        renderUnifiedFavorites(favorites);
+        renderUnifiedArtistFavorites(artistFavorites);
+
+        hideProfilePageLoading();
     } catch (err) {
-        hideUserProfilePageLoading();
-        showNotification('Ошибка загрузки профиля пользователя', 'error');
         console.error('User profile load error:', err);
+        hideProfilePageLoading();
+        showNotification('Ошибка загрузки профиля пользователя', 'error');
     }
 }
 
@@ -2573,6 +2602,12 @@ async function showProfilePage(user) {
 
     try {
     console.log('Rendering profile page for user:', user);
+        // Устанавливаем контекст просматриваемого профиля
+        try {
+            const current = getCurrentUser();
+            window.viewedProfileUserId = user?.id ?? null;
+            window.isOwnProfileView = !!(current && user && current.id === user.id);
+        } catch (_) {}
         await renderProfilePage(user);
         
         // Скрываем загрузку и показываем контент
@@ -2708,14 +2743,17 @@ async function renderProfilePage(user) {
 
   // Загружаем все данные профиля асинхронно
   try {
-    // Загружаем оцененные релизы для профиля
-    await loadProfileRatedReleases();
-    
-    // Загружаем избранные релизы для профиля
-    await loadProfileFavorites();
-    
-    // Загружаем избранных артистов для профиля
-    await loadProfileArtistFavorites();
+    const current = getCurrentUser();
+    const isOwn = !!(current && user && current.id === user.id);
+
+    if (isOwn) {
+      await loadProfileRatedReleases();
+      await loadProfileFavorites();
+      await loadProfileArtistFavorites();
+    } else {
+      // При просмотре чужого профиля используем унифицированный поток (уже выполнен в showUserProfilePage)
+      // Здесь дополнительных загрузок не требуется
+    }
   } catch (error) {
     console.error('Error loading profile data:', error);
     throw error; // Re-throw to be caught by showProfilePage
@@ -2724,6 +2762,102 @@ async function renderProfilePage(user) {
 
 function getCurrentUser() {
     return currentUser;
+}
+
+// Глобальные флаги/контекст для единого профиля
+// ID пользователя, чей профиль просматривается сейчас
+window.viewedProfileUserId = null;
+// Флаг: свой ли это профиль
+window.isOwnProfileView = false;
+
+// ===== Унифицированные функции рендера профиля (один шаблон) =====
+function renderUnifiedProfileHeader(user) {
+  const avatarEl = document.getElementById('profileAvatar');
+  const nameSpan = document.getElementById('profile-name');
+  const bannerEl = document.querySelector('#profile-page .profile-header');
+
+  if (nameSpan) nameSpan.textContent = user.displayName || 'Пользователь';
+  if (user.registrationDate) {
+    const regEl = document.getElementById('profileRegDate');
+    if (regEl) regEl.textContent = new Date(user.registrationDate).toLocaleDateString('ru-RU');
+  }
+
+  // Аватар
+  if (avatarEl && user.avatarBytes && user.avatarBytes.length > 0) {
+    try {
+      const avatarUrl = bytesToObjectURL(user.avatarBytes, user.avatarMime || 'image/png');
+      avatarEl.src = avatarUrl;
+      avatarEl.onerror = () => { avatarEl.src = 'images/default-avatar.png'; };
+    } catch (err) {
+      console.error('Avatar URL error:', err);
+      avatarEl.src = 'images/default-avatar.png';
+    }
+  } else if (avatarEl) {
+    avatarEl.src = 'images/default-avatar.png';
+  }
+
+  // Баннер
+  if (bannerEl) {
+    if (user.bannerBytes && user.bannerBytes.length > 0) {
+      try {
+        const bannerUrl = bytesToObjectURL(user.bannerBytes, user.bannerMime || 'image/png');
+        bannerEl.style.backgroundImage = `url(${bannerUrl})`;
+      } catch (err) {
+        console.error('Banner URL error:', err);
+        bannerEl.style.backgroundImage = '';
+      }
+    } else {
+      bannerEl.style.backgroundImage = '';
+    }
+  }
+}
+
+function renderUnifiedProfileStatsAndAbout(user, ratedReleases) {
+  // Статистика
+  const totalEl = document.getElementById('ownTotalRatings');
+  if (totalEl) totalEl.textContent = Array.isArray(ratedReleases) ? ratedReleases.length : 0;
+
+  const avgEl = document.getElementById('ownAverageRating');
+  if (avgEl) {
+    if (Array.isArray(ratedReleases) && ratedReleases.length) {
+      const valid = ratedReleases
+        .map(r => Number(r.user_score))
+        .filter(n => !Number.isNaN(n) && n > 0);
+      avgEl.textContent = valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : '-';
+    } else {
+      avgEl.textContent = '-';
+    }
+  }
+
+  // Обо мне
+  const aboutEl = document.getElementById('aboutSpan');
+  if (aboutEl) {
+    if (user.about && String(user.about).trim()) {
+      aboutEl.textContent = user.about;
+    } else {
+      aboutEl.textContent = window.isOwnProfileView
+        ? 'Добавьте информацию о себе в настройках'
+        : 'Пользователь пока не добавил описание';
+    }
+  }
+}
+
+function renderUnifiedRatedReleases(releases) {
+  // Используем разметку собственного профиля: #ownRatedReleases
+  if (!Array.isArray(releases)) releases = [];
+  renderOwnRatedReleases(releases, false);
+}
+
+function renderUnifiedFavorites(favorites) {
+  // Используем существующий рендер профиля владельца
+  if (!Array.isArray(favorites)) favorites = [];
+  // Переиспользуем компактный вид
+  renderProfileFavorites(favorites);
+}
+
+function renderUnifiedArtistFavorites(artistFavorites) {
+  if (!Array.isArray(artistFavorites)) artistFavorites = [];
+  renderProfileArtistFavorites(artistFavorites);
 }
 
 // ===== CENTRALIZED PAGE NAVIGATION =====
@@ -3891,6 +4025,9 @@ async function showAllReleasesPage() {
     
   // Используем централизованную навигацию
   showPage('allReleasesPage');
+  // Скрываем кнопку фильтров до полной загрузки
+  const openFiltersBtn = document.getElementById('openFiltersBtn');
+  if (openFiltersBtn) openFiltersBtn.style.visibility = 'hidden';
 
   // Заполняем список лет динамически
   try {
@@ -3912,6 +4049,7 @@ async function showAllReleasesPage() {
     // Показываем индикатор загрузки
     const loadingElement = document.getElementById('allReleasesLoading');
     const containerElement = document.getElementById('allReleasesContainer');
+    const filtersBar = document.getElementById('allReleasesFilters');
     
     if (loadingElement) {
       loadingElement.style.display = 'flex';
@@ -3919,6 +4057,7 @@ async function showAllReleasesPage() {
       loadingElement.style.alignItems = 'center';
     }
     if (containerElement) containerElement.style.display = 'none';
+    if (filtersBar) filtersBar.style.visibility = 'hidden';
 
     console.log('Загрузка релизов...');
     console.log('Проверяем доступность electronAPI:', !!window.electronAPI);
@@ -3932,6 +4071,8 @@ async function showAllReleasesPage() {
     // Скрываем индикатор загрузки
     if (loadingElement) loadingElement.style.display = 'none';
     if (containerElement) containerElement.style.display = 'block';
+    if (openFiltersBtn) openFiltersBtn.style.visibility = 'visible';
+    if (filtersBar) filtersBar.style.visibility = 'visible';
   } catch (err) {
     console.error('=== ОШИБКА В showAllReleasesPage ===');
     console.error('Ошибка загрузки всех релизов:', err);
@@ -3955,7 +4096,7 @@ async function showAllReleasesPage() {
 }
 
 function applyFilters() {
-  loadFilteredReleasesPage(1);
+  return loadFilteredReleasesPage(1);
 }
 
 function loadFilteredReleasesPage(page = 1) {
@@ -3965,6 +4106,7 @@ function loadFilteredReleasesPage(page = 1) {
     const typeVal = document.getElementById('filterType')?.value;
     const ratingMinInput = document.getElementById('filterRatingMin');
     const ratingMaxInput = document.getElementById('filterRatingMax');
+    const ratingSourceVal = document.getElementById('filterRatingSource')?.value || 'user';
     const ratingMinVal = ratingMinInput?.value ?? '';
     const ratingMaxVal = ratingMaxInput?.value ?? '';
 
@@ -3973,17 +4115,19 @@ function loadFilteredReleasesPage(page = 1) {
       year: yearVal ? Number(yearVal) : undefined,
       month: monthVal !== '' ? Number(monthVal) : undefined,
       type: typeVal || undefined,
+      ratingSource: ratingSourceVal === 'host' ? 'host' : 'user',
       ratingMin: ratingMinVal !== '' ? Number(ratingMinVal) : undefined,
       ratingMax: ratingMaxVal !== '' ? Number(ratingMaxVal) : undefined
     };
 
-    loadReleasesPage(page, window.currentFilters);
+    return loadReleasesPage(page, window.currentFilters);
   } catch (error) {
     console.error('Ошибка в loadFilteredReleasesPage:', error);
     const container = document.getElementById('allReleasesContainer');
     if (container) {
       container.innerHTML = '<p style="color: #ff6b6b; text-align: center;">Ошибка фильтрации релизов</p>';
     }
+    return Promise.resolve();
   }
 } 
 
@@ -4902,6 +5046,46 @@ function renderUnifiedSearchResults(results) {
         suggestions.appendChild(artistSection);
     }
     
+    // Отображаем пользователей
+    if (results.users && results.users.length > 0) {
+        const userSection = document.createElement('div');
+        userSection.className = 'search-section';
+        userSection.innerHTML = '<div class="search-section-title">Пользователи</div>';
+        results.users.forEach(user => {
+            const userItem = document.createElement('div');
+            userItem.className = 'search-item user-item';
+
+            let avatarHtml = '<div class="search-item-icon">👤</div>';
+            if (user.avatar) {
+                try {
+                    const blob = new Blob([user.avatar], { type: 'image/jpeg' });
+                    const imageUrl = URL.createObjectURL(blob);
+                    avatarHtml = `<img class="search-item-avatar" src="${imageUrl}" alt="${user.displayName}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                  <div class="search-item-icon" style="display:none;">👤</div>`;
+                } catch (err) {
+                    console.error('Error creating user avatar blob:', err);
+                }
+            }
+
+            userItem.innerHTML = `
+                ${avatarHtml}
+                <div class="search-item-content">
+                    <div class="search-item-title">${user.displayName || 'Пользователь'}</div>
+                </div>
+            `;
+            userItem.addEventListener('click', async () => {
+                try {
+                    await showUserProfilePage(user.id);
+                    hideSearchSuggestions();
+                } catch (e) {
+                    console.error('Open user profile error:', e);
+                }
+            });
+            userSection.appendChild(userItem);
+        });
+        suggestions.appendChild(userSection);
+    }
+
     // Отображаем релизы
     if (results.releases.length > 0) {
         const releaseSection = document.createElement('div');
@@ -5211,12 +5395,99 @@ async function initApp() {
         
     document.getElementById('allReleasesPage').style.display = 'none';
         
+        // Отменяем авто-применение фильтров при каждом изменении (оставляем только синхронизацию значений)
         ['filterYear','filterMonth','filterType','filterRatingMin','filterRatingMax'].forEach(id => {
         const el = document.getElementById(id);
           if (el) {
-            el.addEventListener('change', applyFilters);
+            // больше не вызываем applyFilters() на change здесь
           }
         });
+
+        // Кнопка "Применить" для фильтров
+        const applyBtn = document.getElementById('applyFiltersBtn');
+        const resetBtn = document.getElementById('resetFiltersBtn');
+        const overlay = document.getElementById('filtersOverlay');
+        const drawer = document.getElementById('filtersDrawer');
+        const openBtn = document.getElementById('openFiltersBtn');
+        const closeBtn = document.getElementById('closeFiltersBtn');
+
+        function openDrawer() {
+          if (overlay) overlay.style.display = 'block';
+          if (drawer) drawer.classList.add('open');
+        }
+        function closeDrawer() {
+          if (overlay) overlay.style.display = 'none';
+          if (drawer) drawer.classList.remove('open');
+        }
+
+        if (openBtn) openBtn.addEventListener('click', openDrawer);
+        if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+        if (overlay) overlay.addEventListener('click', closeDrawer);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+        if (applyBtn) {
+          applyBtn.addEventListener('click', async () => {
+            const loadingElement = document.getElementById('allReleasesLoading');
+            const containerElement = document.getElementById('allReleasesContainer');
+            const filtersBar = document.getElementById('allReleasesFilters');
+
+            // 1) Сначала закрываем выдвижную панель, чтобы не лагало при одновременной загрузке
+            closeDrawer();
+            // ждём окончания CSS-трансформации (или таймаут 260мс)
+            await new Promise((resolve) => {
+              let done = false;
+              const finish = () => { if (!done) { done = true; resolve(); } };
+              const to = setTimeout(finish, 260);
+              if (drawer) {
+                const onEnd = () => { clearTimeout(to); drawer.removeEventListener('transitionend', onEnd); finish(); };
+                drawer.addEventListener('transitionend', onEnd, { once: true });
+              }
+            });
+
+            // 2) Показываем лоадер и скрываем список
+            if (loadingElement) loadingElement.style.display = 'flex';
+            if (containerElement) containerElement.style.display = 'none';
+            if (filtersBar) filtersBar.style.visibility = 'hidden';
+            await new Promise(r => requestAnimationFrame(() => r()));
+
+            // 3) Загружаем отфильтрованные релизы
+            try {
+              await applyFilters();
+            } finally {
+              if (loadingElement) loadingElement.style.display = 'none';
+              if (containerElement) containerElement.style.display = 'block';
+              if (filtersBar) filtersBar.style.visibility = 'visible';
+            }
+          });
+        }
+
+        if (resetBtn) {
+          resetBtn.addEventListener('click', () => {
+            const year = document.getElementById('filterYear');
+            const month = document.getElementById('filterMonth');
+            const type = document.getElementById('filterType');
+            const src = document.getElementById('filterRatingSource');
+            const minNum = document.getElementById('filterRatingMin');
+            const maxNum = document.getElementById('filterRatingMax');
+            const minRange = document.getElementById('ratingMinRange');
+            const maxRange = document.getElementById('ratingMaxRange');
+            if (year) year.value = '';
+            if (month) month.value = '';
+            if (type) type.value = '';
+            if (src) src.value = 'user';
+            if (minNum) minNum.value = '';
+            if (maxNum) maxNum.value = '';
+            if (minRange) minRange.value = '0';
+            if (maxRange) maxRange.value = '10';
+            const progress = document.getElementById('ratingRangeProgress');
+            if (progress) {
+              // триггерим ресинхронизацию
+              const evt = new Event('input');
+              if (minRange) minRange.dispatchEvent(evt);
+              if (maxRange) maxRange.dispatchEvent(evt);
+            }
+          });
+        }
 
         // Связка двойного ползунка рейтинга с числовыми инпутами
         const ratingMinInput = document.getElementById('filterRatingMin');
@@ -5282,7 +5553,7 @@ async function initApp() {
             if (val > parseFloat(ratingMaxRange.value)) ratingMaxRange.value = String(val);
             ratingMinRange.value = String(val);
             syncRatingProgress();
-            applyFilters();
+            // применяем только по кнопке
           });
           ratingMaxInput.addEventListener('change', () => {
             const lo = parseFloat(ratingMaxRange.min) || 0;
@@ -5292,12 +5563,11 @@ async function initApp() {
             if (val < parseFloat(ratingMinRange.value)) ratingMinRange.value = String(val);
             ratingMaxRange.value = String(val);
             syncRatingProgress();
-            applyFilters();
+            // применяем только по кнопке
           });
 
           // Применение фильтра при отпускании ползунка
-          ratingMinRange.addEventListener('change', applyFilters);
-          ratingMaxRange.addEventListener('change', applyFilters);
+          // применяем только по кнопке
         }
 
         // Пересчёт при ресайзе окна, чтобы учесть изменение ширины трека
